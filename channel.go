@@ -43,6 +43,7 @@ func (c *Channel) Join(client *Client, key string) {
 			if err != nil {
 				println(err.Error())
 			}
+			return
 		}
 	}
 	operator := len(c.members) == 0
