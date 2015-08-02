@@ -67,17 +67,18 @@ func (c *Client) handleIncoming() {
 	c.Server.AddClient(c)
 	for {
 		message, err := c.Decode()
-		if err != nil || message == nil {
+		if err != nil {
 
 			_, closedError := err.(*net.OpError)
 			if err == io.EOF || err == io.ErrClosedPipe || closedError || strings.Contains(err.Error(), "use of closed network connection") {
 				return
 			}
-			println("Error decoding incoming message", err.Error())
-			return
-			//continue
+
+			continue
 		}
-		//println(message.String())
+		if message == nil || message.Len() == 0 {
+			continue
+		}
 
 		c.idleTimer.Stop()
 		c.idleTimer = time.AfterFunc(time.Minute, c.idle)
