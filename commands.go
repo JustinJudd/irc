@@ -2,6 +2,7 @@ package irc
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/sorcix/irc"
 )
@@ -37,7 +38,15 @@ func PongHandler(message *irc.Message, client *Client) {
 // Implemented according to RFC 1459 4.1.6 and RFC 2812 3.1.7
 func QuitHandler(message *irc.Message, client *Client) {
 
-	m := irc.Message{Prefix: client.server.Prefix, Command: irc.ERROR, Trailing: "quit"}
+	var leavingMessage string
+	if len(message.Params) != 0 {
+		leavingMessage = message.Params[0]
+	}
+	for _, channel := range client.GetChannels() {
+		channel.Quit(client, leavingMessage)
+	}
+
+	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERROR, Trailing: "quit"}
 
 	client.Encode(&m)
 	client.Close()
@@ -48,7 +57,7 @@ func QuitHandler(message *irc.Message, client *Client) {
 func NickHandler(message *irc.Message, client *Client) {
 
 	var m irc.Message
-	name := client.server.config.Name
+	name := client.Server.Config.Name
 	nickname := client.Nickname
 
 	if len(message.Params) == 0 {
@@ -59,7 +68,7 @@ func NickHandler(message *irc.Message, client *Client) {
 
 	newNickname := message.Params[0]
 
-	_, found := client.server.ClientsByNick[newNickname]
+	_, found := client.Server.GetClientByNick(newNickname)
 
 	switch {
 	case !client.authorized:
@@ -72,11 +81,11 @@ func NickHandler(message *irc.Message, client *Client) {
 	default:
 		if len(client.Nickname) == 0 && len(client.Username) != 0 { // Client is connected now, show MOTD ...
 			client.Nickname = newNickname
-			client.server.AddClientNick(client)
+			client.Server.AddClientNick(client)
 			client.Welcome()
 		} else { //change client name
 			client.Nickname = newNickname
-			client.server.UpdateClientNick(client, nickname)
+			client.Server.UpdateClientNick(client, nickname)
 			//fmt.Println("Updating client name")
 		}
 	}
@@ -91,7 +100,7 @@ func NickHandler(message *irc.Message, client *Client) {
 // Implemented according to RFC 1459 4.1.3 and RFC 2812 3.1.3
 func UserHandler(message *irc.Message, client *Client) {
 	var m irc.Message
-	serverName := client.server.config.Name
+	serverName := client.Server.Config.Name
 	//nickname := client.Nickname
 
 	if len(client.Username) != 0 { // Already registered
@@ -124,4 +133,172 @@ func UserHandler(message *irc.Message, client *Client) {
 		client.Encode(&m)
 	}
 
+}
+
+// JoinHandler is a CommandHandler to respond to IRC JOIN commands from a client
+// Implemented according to RFC 1459 4.2.1 and RFC 2812 3.2.1
+func JoinHandler(message *irc.Message, client *Client) {
+	channelNames := message.Params[0]
+	if channelNames == "0" { // Leave all channels
+		for _, channel := range client.GetChannels() {
+			channel.Part(client, "")
+		}
+		return
+	}
+	channelList := strings.Split(channelNames, ",")
+	keys := ""
+	if len(message.Params) >= 2 {
+		keys = message.Params[1]
+	}
+	keyList := strings.Split(keys, ",")
+
+	for i, cName := range channelList {
+		var key string
+		if len(keyList) > i {
+			key = keyList[i]
+		}
+		channel, ok := client.Server.GetChannel(cName)
+		if !ok { // Channel doesn't exist  yet
+			channel = NewChannel(client.Server, client)
+			channel.Name = cName
+
+			//channel.Members[client.Nickname] = client.Nickname
+
+			channel.Key = key
+
+			client.Server.AddChannel(channel)
+
+		} else { //Channel already exists
+		}
+		//Notify channel members of new member
+		channel.Join(client, key)
+	}
+
+}
+
+// PartHandler is a CommandHandler to respond to IRC PART commands from a client
+// Implemented according to RFC 1459 4.2.2 and RFC 2812 3.2.2
+func PartHandler(message *irc.Message, client *Client) {
+	if len(message.Params) == 0 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Trailing: "Not enough parameters"}
+		client.Encode(&m)
+		return
+	}
+
+	for _, cName := range message.Params {
+		channel, ok := client.Server.GetChannel(cName)
+		if !ok { // Channel doesn't exist  yet
+
+			m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOSUCHCHANNEL, Trailing: "You're not on that channel"}
+			client.Encode(&m)
+			continue
+
+		} else { //Channel already exists
+		}
+
+		channel.Part(client, message.Trailing)
+	}
+
+}
+
+// PrivMsgHandler is a CommandHandler to respond to IRC PRIVMSG commands from a client
+// Implemented according to RFC 1459 4.4.1 and RFC 2812 3.3.1
+func PrivMsgHandler(message *irc.Message, client *Client) {
+	if len(message.Params) == 0 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NORECIPIENT, Params: []string{client.Nickname}, Trailing: "No recipient given (PRIVMSG)"}
+		client.Encode(&m)
+		return
+	}
+	if len(message.Params) > 1 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_TOOMANYTARGETS, Params: []string{client.Nickname}}
+		client.Encode(&m)
+		return
+	}
+	if len(message.Trailing) == 0 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOTEXTTOSEND, Params: []string{client.Nickname}, Trailing: "No text to send"}
+		client.Encode(&m)
+		return
+	}
+
+	to := message.Params[0]
+	ch, ok := client.Server.GetChannel(to)
+	if ok { // message is to a channel
+		ch.Message(client, message.Trailing)
+		return
+
+	}
+	// message to a user?
+	cl, ok := client.Server.GetClientByNick(to)
+	if ok {
+		m := irc.Message{Prefix: client.Prefix, Command: irc.PRIVMSG, Params: []string{cl.Nickname}, Trailing: message.Trailing}
+		cl.Encode(&m)
+		return
+	}
+
+	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOSUCHNICK, Params: []string{client.Nickname}, Trailing: "No recipient given (PRIVMSG)"}
+	client.Encode(&m)
+
+}
+
+// NoticeHandler is a CommandHandler to respond to IRC NOTICE commands from a client
+// Implemented according to RFC 1459 4.4.2 and RFC 2812 3.3.2
+func NoticeHandler(message *irc.Message, client *Client) {
+	if len(message.Params) == 0 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NORECIPIENT, Params: []string{client.Nickname}, Trailing: "No recipient given (PRIVMSG)"}
+		client.Encode(&m)
+		return
+	}
+	if len(message.Params) > 1 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_TOOMANYTARGETS, Params: []string{client.Nickname}}
+		client.Encode(&m)
+		return
+	}
+	if len(message.Trailing) == 0 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOTEXTTOSEND, Params: []string{client.Nickname}, Trailing: "No text to send"}
+		client.Encode(&m)
+		return
+	}
+
+	to := message.Params[0]
+	ch, ok := client.Server.GetChannel(to)
+	if ok { // message is to a channel
+		ch.Notice(client, message.Trailing)
+		return
+
+	}
+	// message to a user?
+	cl, ok := client.Server.GetClientByNick(to)
+	if ok {
+		m := irc.Message{Prefix: client.Prefix, Command: irc.NOTICE, Params: []string{cl.Nickname}, Trailing: message.Trailing}
+		cl.Encode(&m)
+		return
+	}
+
+	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOSUCHNICK, Params: []string{client.Nickname}, Trailing: "No recipient given (PRIVMSG)"}
+	client.Encode(&m)
+
+}
+
+// WhoHandler is a CommandHandler to respond to IRC WHO commands from a client
+// Implemented according to RFC 1459 4.5.1 and RFC 2812 3.6.1
+func WhoHandler(message *irc.Message, client *Client) {
+	if len(message.Params) == 0 {
+		//return listing of all users
+		return
+	}
+	ch, ok := client.Server.GetChannel(message.Params[0])
+	if ok { //Channel exists
+		for clientName := range ch.members {
+			cl, found := client.Server.GetClientByNick(clientName)
+
+			if found {
+				msg := fmt.Sprintf("%s %s %s %s %s %s %s%s :%d %s", client.Nickname, ch.Name, cl.Name, cl.Host, client.Server.Config.Name, cl.Nickname, "H", "", 0, cl.RealName)
+				m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_WHOREPLY, Params: strings.Fields(msg)}
+				client.Encode(&m)
+			}
+		}
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_ENDOFWHO, Params: []string{client.Nickname, ch.Name}, Trailing: "End of WHO list"}
+		client.Encode(&m)
+
+	}
 }
