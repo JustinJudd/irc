@@ -9,12 +9,12 @@ import (
 
 // Channel represents an IRC channel or room
 type Channel struct {
-	Name  string
-	Modes ChannelModeSet
+	Name string
+	*ChannelModeSet
 	Topic string
 	Key   string
 
-	members      map[string]ChannelModeSet
+	members      map[string]*ChannelModeSet
 	membersMutex sync.RWMutex
 
 	Server *Server
@@ -23,17 +23,17 @@ type Channel struct {
 // NewChannel creates and returns a new Channel
 func NewChannel(s *Server, creator *Client) *Channel {
 	c := &Channel{}
-	c.members = map[string]ChannelModeSet{}
+	c.members = map[string]*ChannelModeSet{}
 	c.Server = s
-	c.Modes = NewChannelModeSet()
+	c.ChannelModeSet = NewChannelModeSet()
 
 	return c
 }
 
 // Join handles a client joining the channel and notifies other channel members
 func (c *Channel) Join(client *Client, key string) {
-	_, ok := c.members[client.Nickname]
-	if ok { // client is already in this channel
+
+	if c.HasMember(client) { // client is already in this channel
 		return
 	}
 	if len(c.Key) != 0 { //if key is required, verify that client provided matching key
@@ -46,13 +46,14 @@ func (c *Channel) Join(client *Client, key string) {
 			return
 		}
 	}
-	operator := len(c.members) == 0
+	creator := c.GetMemberCount() == 0
 
 	c.AddMember(client)
 	client.AddChannel(c)
 
-	if operator { // Client is creating channel
+	if creator { // Client is creating channel
 		// Creator should be a channel operator - Maybe check if it is a "safe" channel
+
 		c.AddMemberMode(client, ChannelModeOperator)
 	}
 
@@ -85,6 +86,9 @@ func (c *Channel) Join(client *Client, key string) {
 			mClient, _ := client.Server.GetClientByNick(member)
 
 			if mClient != nil {
+				if c.MemberHasMode(mClient, ChannelModeOperator) {
+					memberStr += "@"
+				}
 				memberStr += mClient.Nickname + " "
 
 				mClient.Encode(&m)
@@ -104,8 +108,7 @@ func (c *Channel) Join(client *Client, key string) {
 // Part handles when a client leaves a channel
 func (c *Channel) Part(client *Client, message string) {
 
-	_, ok := c.members[client.Nickname]
-	if !ok { // client is not  in this channel
+	if !c.HasMember(client) { // client is not  in this channel
 		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOTONCHANNEL, Params: []string{c.Name}, Trailing: "You're not on that channel"}
 		client.Encode(&m)
 		return
@@ -125,8 +128,7 @@ func (c *Channel) Part(client *Client, message string) {
 // Quit is when a client quits the server - at channel level, similar to part
 func (c *Channel) Quit(client *Client, message string) {
 
-	_, ok := c.members[client.Nickname]
-	if !ok { // client is not  in this channel
+	if !c.HasMember(client) { // client is not  in this channel
 		//m := irc.Message{Prefix: &irc.Prefix{Name: client.Server.config.Name}, Command: irc.ERR_NOTONCHANNEL, Params: []string{c.Name}, Trailing: "You're not on that channel"}
 		//client.Encode(&m)
 		return
@@ -201,6 +203,21 @@ func (c *Channel) RemoveMember(client *Client) {
 	}
 }
 
+// HasMember returns if a client is an existing member of this channel
+func (c *Channel) HasMember(client *Client) bool {
+	c.membersMutex.RLock()
+	defer c.membersMutex.RUnlock()
+	_, found := c.members[client.Nickname]
+	return found
+}
+
+// GetMemberCount returns how many users are currently on the channel
+func (c *Channel) GetMemberCount() int {
+	c.membersMutex.RLock()
+	defer c.membersMutex.RUnlock()
+	return len(c.members)
+}
+
 // AddMemberMode adds a mode for the member of the channel
 func (c *Channel) AddMemberMode(client *Client, mode ChannelMode) {
 	c.membersMutex.Lock()
@@ -224,6 +241,23 @@ func (c *Channel) RemoveMemberMode(client *Client, mode ChannelMode) {
 
 }
 
+func (c *Channel) GetMemberModes(client *Client) *ChannelModeSet {
+	c.membersMutex.RLock()
+	defer c.membersMutex.RUnlock()
+	return c.members[client.Nickname]
+}
+
+// MemberHasMode returns whether the given client has the requested mode
+func (c *Channel) MemberHasMode(client *Client, mode ChannelMode) bool {
+	c.membersMutex.RLock()
+	defer c.membersMutex.RUnlock()
+	member, ok := c.members[client.Nickname]
+	if !ok { //client is not a member in channel
+		return false
+	}
+	return member.HasMode(mode)
+}
+
 func (c *Channel) delete() {
 	if len(c.members) != 0 {
 		return
@@ -234,7 +268,7 @@ func (c *Channel) delete() {
 
 var channelStarters = map[uint8]interface{}{'&': nil, '#': nil, '+': nil, '!': nil}
 
-// validName checks if it meets parameters found in rfc2812 1.3
+// validName checks if it meets parameters found in RFC 2812 Section 1.3
 func (c *Channel) validName() bool {
 	_, ok := channelStarters[c.Name[0]]
 	if !ok {
@@ -252,4 +286,49 @@ func (c *Channel) validName() bool {
 	c.Name = strings.TrimSuffix(c.Name, ",") //trim comma off of the end
 
 	return true
+}
+
+// TopicCommand handles querying or modifying the channels topic
+func (c *Channel) TopicCommand(client *Client, topic string) {
+
+	if !c.HasMember(client) { // Client isn't on this channel
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOTONCHANNEL, Params: []string{c.Name}, Trailing: "You're not on that channel"}
+		client.Encode(&m)
+		return
+	}
+
+	//Client is trying to get topic
+	if len(topic) == 0 { //Get channels topic
+		if len(c.Topic) == 0 { // No topic is not set
+			m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_NOTOPIC, Params: []string{c.Name}, Trailing: "No topic is set"}
+			client.Encode(&m)
+			return
+		}
+
+		// Return Channel topic
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_TOPIC, Params: []string{c.Name}, Trailing: c.Topic}
+		client.Encode(&m)
+		return
+
+	}
+
+	// Client is trying to set topic
+	// If client is the operator, he can set the topic always
+	isOp := c.MemberHasMode(client, ChannelModeOperator)
+	tMode := c.HasMode(ChannelModeTopic)
+
+	if isOp || !tMode { // Has permissions - operator or channel does not have +t mode
+		c.Topic = topic
+		//Notify channel members of new topic
+		m := irc.Message{Prefix: client.Prefix, Command: irc.TOPIC, Params: []string{c.Name}, Trailing: c.Topic}
+		c.SendMessage(&m)
+		return
+	}
+
+	// Don't have permissions to set topic
+
+	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_CHANOPRIVSNEEDED, Params: []string{c.Name}, Trailing: "You're not channel operator"}
+	client.Encode(&m)
+	return
+
 }

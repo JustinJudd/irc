@@ -2,7 +2,7 @@ package irc
 
 import "sync"
 
-// UserMode  - RFC 1459 4.2.3.2 and RFC 2812 3.1.5
+// UserMode  - RFC 1459 Section 4.2.3.2 and RFC 2812 Section 3.1.5
 type UserMode rune
 
 const (
@@ -15,6 +15,7 @@ const (
 	UserModeServerNotice  UserMode = 's' //obsolete
 )
 
+// UserModes contains the supported User UserMode types
 var UserModes = map[UserMode]interface{}{
 	UserModeAway:          nil,
 	UserModeInvisible:     nil,
@@ -25,17 +26,20 @@ var UserModes = map[UserMode]interface{}{
 	UserModeServerNotice:  nil,
 }
 
+// UserModeSet provides means for storing and checking UserModes
 type UserModeSet struct {
 	userModes map[UserMode]interface{}
-	mutex     sync.Mutex
+	mutex     sync.RWMutex
 }
 
-func NewUserModeSet() UserModeSet {
+// NewUserModeSet creates and returns a new UserModeSet
+func NewUserModeSet() *UserModeSet {
 	u := UserModeSet{}
 	u.userModes = map[UserMode]interface{}{}
-	return u
+	return &u
 }
 
+// AddMode adds a mode to the UserModeSet
 func (u *UserModeSet) AddMode(mode UserMode) {
 	u.mutex.Lock()
 	defer u.mutex.Unlock()
@@ -43,6 +47,7 @@ func (u *UserModeSet) AddMode(mode UserMode) {
 
 }
 
+// RemoveMode removes a mode from the UserModeSet
 func (u *UserModeSet) RemoveMode(mode UserMode) {
 	u.mutex.Lock()
 	defer u.mutex.Unlock()
@@ -50,16 +55,28 @@ func (u *UserModeSet) RemoveMode(mode UserMode) {
 
 }
 
+// HasMode detects if a UserMode is contained in the UserModeSet
+func (u *UserModeSet) HasMode(mode UserMode) bool {
+	u.mutex.RLock()
+	defer u.mutex.RUnlock()
+	_, found := u.userModes[mode]
+	return found
+}
+
+// String formats the UserModeString to be returned for MODE queries
 func (u *UserModeSet) String() string {
 	s := ""
-	for m, _ := range u.userModes {
+	if len(u.userModes) > 0 {
+		s = "+"
+	}
+	for m := range u.userModes {
 		s += string(m)
 	}
 
 	return s
 }
 
-// ModeModifier - RFC 1459 4.2.3 and RFC 2812 3.1.5
+// ModeModifier - RFC 1459 Section 4.2.3 and RFC 2812 Section 3.1.5
 type ModeModifier rune
 
 const (
@@ -67,7 +84,7 @@ const (
 	ModeModifierRemove ModeModifier = '-'
 )
 
-// ChannelMode -  RFC 1459 4.2.3.1 and RFC 2812 3.2.3 and RFC 2811 4
+// ChannelMode -  RFC 1459 Section 4.2.3.1 and RFC 2812 Section 3.2.3 and RFC 2811 Section 4
 type ChannelMode rune
 
 const (
@@ -93,27 +110,75 @@ const (
 	ChannelModeInvitationMask ChannelMode = 'I'
 )
 
+// ChannelModes contains the supported channel modes
+// Currently supported modes are just those in RFC 1459
+var ChannelModes = map[ChannelMode]interface{}{
+	//ChannelModeCreator:           nil,
+	ChannelModeOperator: nil,
+	ChannelModeVoice:    nil,
+	//ChannelModeAnonymous:         nil,
+	ChannelModeInviteOnly:        nil,
+	ChannelModeModerated:         nil,
+	ChannelModeNoOutsideMessages: nil,
+	//ChannelModeQuiet:             nil,
+	ChannelModePrivate: nil,
+	ChannelModeSecret:  nil,
+	//ChannelModeReOp:              nil,
+	ChannelModeTopic: nil,
+	ChannelModeKey:   nil,
+	ChannelModeLimit: nil,
+	ChannelModeBan:   nil,
+	//ChannelModeExceptionMask:     nil,
+	//ChannelModeInvitationMask:    nil,
+}
+
+// ChannelModeSet represents a set of active ChannelModes
 type ChannelModeSet struct {
-	Modes map[ChannelMode]interface{}
-	mutex sync.Mutex
+	modes map[ChannelMode]interface{}
+	mutex sync.RWMutex
 }
 
-func NewChannelModeSet() ChannelModeSet {
+// NewChannelModeSet creates and returns a new ChannelModeSet
+func NewChannelModeSet() *ChannelModeSet {
 	c := ChannelModeSet{}
-	c.Modes = map[ChannelMode]interface{}{}
-	return c
+	c.modes = map[ChannelMode]interface{}{}
+	return &c
 }
 
+// AddMode adds a ChannelMode as active
 func (c *ChannelModeSet) AddMode(mode ChannelMode) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	c.Modes[mode] = nil
+	c.modes[mode] = nil
 
 }
 
+// RemoveMode removes the given mode from the active set
 func (c *ChannelModeSet) RemoveMode(mode ChannelMode) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	delete(c.Modes, mode)
+	delete(c.modes, mode)
 
+}
+
+// HasMode determines if the ChannelModeSet contains the given ChannelMode
+func (c *ChannelModeSet) HasMode(mode ChannelMode) bool {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+	_, found := c.modes[mode]
+	return found
+
+}
+
+// String returns the ChannelModeSet formatted for the MODE queries
+func (c *ChannelModeSet) String() string {
+	s := ""
+	if len(c.modes) > 0 {
+		s = "+"
+	}
+	for m := range c.modes {
+		s += string(m)
+	}
+
+	return s
 }

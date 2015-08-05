@@ -21,26 +21,30 @@ func (f CommandHandlerFunc) ServeIRC(message *irc.Message, client *Client) {
 }
 
 // PingHandler is a CommandHandler to respond to IRC PING commands from a client
-// Implemented according to RFC 1459 4.6.2 and RFC 2812 3.7.2
+// Implemented according to RFC 1459 Section 4.6.2 and RFC 2812 Section 3.7.2
 func PingHandler(message *irc.Message, client *Client) {
 	client.Pong()
 
 }
 
 // PongHandler is a CommandHandler to respond to IRC PONG commands from a client
-// Implemented according to RFC 1459 4.6.3 and RFC 2812 3.7.3
+// Implemented according to RFC 1459 Section 4.6.3 and RFC 2812 Section 3.7.3
 func PongHandler(message *irc.Message, client *Client) {
 	//client.Ping()
 
 }
 
 // QuitHandler is a CommandHandler to respond to IRC QUIT commands from a client
-// Implemented according to RFC 1459 4.1.6 and RFC 2812 3.1.7
+// Implemented according to RFC 1459 Section 4.1.6 and RFC 2812 Section 3.1.7
 func QuitHandler(message *irc.Message, client *Client) {
 
 	var leavingMessage string
 	if len(message.Params) != 0 {
 		leavingMessage = message.Params[0]
+	} else if len(message.Trailing) != 0 {
+		leavingMessage = message.Trailing
+	} else {
+		leavingMessage = client.Nickname
 	}
 	for _, channel := range client.GetChannels() {
 		channel.Quit(client, leavingMessage)
@@ -53,7 +57,7 @@ func QuitHandler(message *irc.Message, client *Client) {
 }
 
 // NickHandler is a CommandHandler to respond to IRC NICK commands from a client
-// Implemented according to RFC 1459 4.1.2 and RFC 2812 3.1.2
+// Implemented according to RFC 1459 Section 4.1.2 and RFC 2812 Section 3.1.2
 func NickHandler(message *irc.Message, client *Client) {
 
 	var m irc.Message
@@ -97,7 +101,7 @@ func NickHandler(message *irc.Message, client *Client) {
 }
 
 // UserHandler is a CommandHandler to respond to IRC USER commands from a client
-// Implemented according to RFC 1459 4.1.3 and RFC 2812 3.1.3
+// Implemented according to RFC 1459 Section 4.1.3 and RFC 2812 Section 3.1.3
 func UserHandler(message *irc.Message, client *Client) {
 	var m irc.Message
 	serverName := client.Server.Config.Name
@@ -136,7 +140,7 @@ func UserHandler(message *irc.Message, client *Client) {
 }
 
 // JoinHandler is a CommandHandler to respond to IRC JOIN commands from a client
-// Implemented according to RFC 1459 4.2.1 and RFC 2812 3.2.1
+// Implemented according to RFC 1459 Section 4.2.1 and RFC 2812 Section 3.2.1
 func JoinHandler(message *irc.Message, client *Client) {
 	channelNames := message.Params[0]
 	if channelNames == "0" { // Leave all channels
@@ -177,7 +181,7 @@ func JoinHandler(message *irc.Message, client *Client) {
 }
 
 // PartHandler is a CommandHandler to respond to IRC PART commands from a client
-// Implemented according to RFC 1459 4.2.2 and RFC 2812 3.2.2
+// Implemented according to RFC 1459 Section 4.2.2 and RFC 2812 Section 3.2.2
 func PartHandler(message *irc.Message, client *Client) {
 	if len(message.Params) == 0 {
 		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Trailing: "Not enough parameters"}
@@ -202,7 +206,7 @@ func PartHandler(message *irc.Message, client *Client) {
 }
 
 // PrivMsgHandler is a CommandHandler to respond to IRC PRIVMSG commands from a client
-// Implemented according to RFC 1459 4.4.1 and RFC 2812 3.3.1
+// Implemented according to RFC 1459 Section 4.4.1 and RFC 2812 Section 3.3.1
 func PrivMsgHandler(message *irc.Message, client *Client) {
 	if len(message.Params) == 0 {
 		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NORECIPIENT, Params: []string{client.Nickname}, Trailing: "No recipient given (PRIVMSG)"}
@@ -232,6 +236,12 @@ func PrivMsgHandler(message *irc.Message, client *Client) {
 	if ok {
 		m := irc.Message{Prefix: client.Prefix, Command: irc.PRIVMSG, Params: []string{cl.Nickname}, Trailing: message.Trailing}
 		cl.Encode(&m)
+
+		if cl.HasMode(UserModeAway) {
+			m := irc.Message{Prefix: cl.Server.Prefix, Command: irc.RPL_AWAY, Params: []string{client.Nickname, cl.Nickname}, Trailing: cl.AwayMessage}
+			client.Encode(&m)
+		}
+
 		return
 	}
 
@@ -241,7 +251,7 @@ func PrivMsgHandler(message *irc.Message, client *Client) {
 }
 
 // NoticeHandler is a CommandHandler to respond to IRC NOTICE commands from a client
-// Implemented according to RFC 1459 4.4.2 and RFC 2812 3.3.2
+// Implemented according to RFC 1459 Section 4.4.2 and RFC 2812 Section 3.3.2
 func NoticeHandler(message *irc.Message, client *Client) {
 	if len(message.Params) == 0 {
 		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NORECIPIENT, Params: []string{client.Nickname}, Trailing: "No recipient given (PRIVMSG)"}
@@ -280,7 +290,7 @@ func NoticeHandler(message *irc.Message, client *Client) {
 }
 
 // WhoHandler is a CommandHandler to respond to IRC WHO commands from a client
-// Implemented according to RFC 1459 4.5.1 and RFC 2812 3.6.1
+// Implemented according to RFC 1459 Section 4.5.1 and RFC 2812 Section 3.6.1
 func WhoHandler(message *irc.Message, client *Client) {
 	if len(message.Params) == 0 {
 		//return listing of all users
@@ -292,13 +302,188 @@ func WhoHandler(message *irc.Message, client *Client) {
 			cl, found := client.Server.GetClientByNick(clientName)
 
 			if found {
-				msg := fmt.Sprintf("%s %s %s %s %s %s %s%s :%d %s", client.Nickname, ch.Name, cl.Name, cl.Host, client.Server.Config.Name, cl.Nickname, "H", "", 0, cl.RealName)
+				msg := whoLine(cl, ch, client.Nickname)
 				m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_WHOREPLY, Params: strings.Fields(msg)}
 				client.Encode(&m)
 			}
 		}
-		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_ENDOFWHO, Params: []string{client.Nickname, ch.Name}, Trailing: "End of WHO list"}
-		client.Encode(&m)
 
+	} else {
+		// Not a channel, maybe a user
+		cl, ok := client.Server.GetClientByNick(message.Params[0])
+		if ok {
+			msg := whoLine(cl, nil, client.Nickname)
+			m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_WHOREPLY, Params: strings.Fields(msg)}
+			client.Encode(&m)
+		}
 	}
+
+	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_ENDOFWHO, Params: []string{client.Nickname, message.Params[0]}, Trailing: "End of WHO list"}
+	client.Encode(&m)
+
+}
+
+func whoLine(client *Client, channel *Channel, recipientClient string) string {
+	channelName := "*"
+
+	here := "H"
+	if client.UserModeSet.HasMode(UserModeAway) {
+		here = "G"
+	}
+	opStatus := ""
+	if client.HasMode(UserModeOperator) || client.HasMode(UserModeLocalOperator) {
+		opStatus += "*"
+	}
+	if channel != nil {
+		channelName = channel.Name
+		if channel.MemberHasMode(client, ChannelModeOperator) {
+			opStatus += "@"
+		}
+	}
+
+	hopCount := 0 //For now only local clients allowed - no federation
+
+	return fmt.Sprintf("%s %s %s %s %s %s %s%s :%d %s", recipientClient, channelName, client.Name, client.Host, client.Server.Config.Name, client.Nickname, here, opStatus, hopCount, client.RealName)
+
+}
+
+// TopicHandler is a CommandHandler to respond to IRC TOPIC commands from a client
+// Implemented according to RFC 1459 Section 4.2.4 and RFC 2812 Section 3.2.4
+func TopicHandler(message *irc.Message, client *Client) {
+	if len(message.Params) == 0 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Trailing: "Not enough parameters"}
+		client.Encode(&m)
+		return
+	}
+
+	channelName := message.Params[0]
+	channel, ok := client.Server.GetChannel(channelName)
+	if !ok {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOSUCHCHANNEL, Params: []string{channelName}, Trailing: "No such channel"}
+		client.Encode(&m)
+		return
+	}
+
+	m := ""
+	if len(message.Params) > 1 {
+		m = message.Params[1]
+	} else {
+		m = message.Trailing
+	}
+	channel.TopicCommand(client, m)
+
+}
+
+// AwayHandler is a CommandHandler to respond to IRC AWAY commands from a client
+// Implemented according to RFC 1459 Section 5.1 and RFC 2812 Section 4.1
+func AwayHandler(message *irc.Message, client *Client) {
+	if len(message.Params) == 0 && len(message.Trailing) == 0 {
+		client.AwayMessage = ""
+		client.RemoveMode(UserModeAway)
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_UNAWAY, Trailing: "You are no longer marked as being away"}
+		client.Encode(&m)
+		return
+	}
+	if len(message.Trailing) > 0 {
+		client.AwayMessage = message.Trailing
+	} else {
+		client.AwayMessage = strings.Join(message.Params, " ")
+	}
+	client.AddMode(UserModeAway)
+	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_NOWAWAY, Trailing: "You have been marked as being away"}
+
+	client.Encode(&m)
+	return
+
+}
+
+// ModeHandler is a CommandHandler to respond to IRC MODE commands from a client
+// Implemented according to RFC 1459 Section 4.2.3 and RFC 2812 Section 3.1.5 and RFC 2811
+func ModeHandler(message *irc.Message, client *Client) {
+	if len(message.Params) == 0 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Trailing: "Not enough parameters"}
+		client.Encode(&m)
+		return
+	}
+
+	id := message.Params[0]
+	_, ok := client.Server.GetChannel(id)
+	if ok {
+		ChannelModeHandler(message, client)
+		return
+	}
+	UserModeHandler(message, client)
+
+}
+
+// UserModeHandler is a specialized CommandHandler to respond to global or user IRC MODE commands from a client
+// Implemented according to RFC 1459 Section 4.2.3.2 and RFC 2812 Section 3.1.5
+func UserModeHandler(message *irc.Message, client *Client) {
+	if len(message.Params) == 0 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Trailing: "Not enough parameters"}
+		client.Encode(&m)
+		return
+	}
+
+	username := message.Params[0]
+	if username != client.Nickname {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_USERSDONTMATCH, Trailing: "Cannot change mode for other users"}
+		client.Encode(&m)
+		return
+	}
+
+	if len(message.Params) == 1 { // just nickname is provided
+		// return current settings for this user
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_UMODEIS, Params: []string{client.UserModeSet.String()}}
+		client.Encode(&m)
+		return
+	}
+
+	for _, modeFlags := range message.Params[1:] {
+		modifier := ModeModifier(modeFlags[0])
+		switch modifier {
+		case ModeModifierAdd:
+		case ModeModifierRemove:
+		default:
+			m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_UMODEUNKNOWNFLAG, Trailing: "Unknown MODE flag"}
+			client.Encode(&m)
+			return
+		}
+
+		for _, modeFlag := range modeFlags[1:] {
+			mode := UserMode(modeFlag)
+			_, ok := UserModes[mode]
+			if !ok || mode == UserModeAway { // Away flag should only be set with AWAY command
+				m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_UMODEUNKNOWNFLAG, Trailing: "Unknown MODE flag"}
+				client.Encode(&m)
+				return
+			}
+			if modifier == ModeModifierAdd {
+				switch mode {
+				case UserModeOperator, UserModeLocalOperator: // Can't make oneself an operator
+				default:
+					client.AddMode(mode)
+				}
+
+			} else if modifier == ModeModifierRemove {
+				switch mode {
+				case UserModeRestricted: // Can't remove oneself from being restricted
+				default:
+					client.RemoveMode(mode)
+				}
+
+			}
+		}
+	}
+
+	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_UMODEIS, Params: []string{client.Nickname, client.UserModeSet.String()}}
+	client.Encode(&m)
+	return
+
+}
+
+// ChannelModeHandler is a specialized CommandHandler to respond to channel IRC MODE commands from a client
+// Implemented according to RFC 1459 Section 4.2.3.1 and RFC 2811
+func ChannelModeHandler(message *irc.Message, client *Client) {
+
 }

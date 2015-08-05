@@ -33,6 +33,8 @@ type Client struct {
 
 	channels     map[string]*Channel
 	channelMutex sync.Mutex
+
+	*UserModeSet
 }
 
 func (s *Server) newClient(ircConn *irc.Conn, conn net.Conn) *Client {
@@ -40,6 +42,7 @@ func (s *Server) newClient(ircConn *irc.Conn, conn net.Conn) *Client {
 	client.authorized = len(s.Config.Password) == 0
 	client.idleTimer = time.AfterFunc(time.Minute, client.idle)
 	client.channels = map[string]*Channel{}
+	client.UserModeSet = NewUserModeSet()
 	return client
 }
 
@@ -53,13 +56,13 @@ func (c *Client) Close() error {
 
 // Ping sends an IRC PING command to a client
 func (c *Client) Ping() {
-	m := irc.Message{Command: irc.PING, Params: []string{"JuddBot"}, Trailing: "JuddBot"}
+	m := irc.Message{Command: irc.PING, Trailing: c.Server.Config.Name}
 	c.Encode(&m)
 }
 
 // Pong sends an IRC PONG command to the client
 func (c *Client) Pong() {
-	m := irc.Message{Command: irc.PONG, Params: []string{"JuddBot"}, Trailing: "JuddBot"}
+	m := irc.Message{Command: irc.PONG, Trailing: c.Server.Config.Name}
 	c.Encode(&m)
 }
 
@@ -101,7 +104,7 @@ func (c *Client) idle() {
 func (c *Client) quit() {
 	// Have client leave/part each channel
 	for _, channel := range c.GetChannels() {
-		channel.Quit(c, "")
+		channel.Quit(c, "Disconnected")
 	}
 	c.Quit()
 }
@@ -120,7 +123,7 @@ func (c *Client) Quit() {
 func (c *Client) Welcome() {
 
 	// Have all client info now
-	c.Prefix = &irc.Prefix{Name: c.Nickname, User: c.Username, Host: c.Host}
+	c.Prefix = &irc.Prefix{Name: c.Nickname, User: c.Name, Host: c.Host}
 
 	m := irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_WELCOME,
 		Params: []string{c.Nickname, c.Server.Config.Welcome}}
