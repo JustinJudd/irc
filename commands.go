@@ -486,4 +486,105 @@ func UserModeHandler(message *irc.Message, client *Client) {
 // Implemented according to RFC 1459 Section 4.2.3.1 and RFC 2811
 func ChannelModeHandler(message *irc.Message, client *Client) {
 
+	if len(message.Params) == 0 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Trailing: "Not enough parameters"}
+		client.Encode(&m)
+		return
+	}
+
+	channelName := message.Params[0]
+	channel, ok := client.Server.GetChannel(channelName)
+	if !ok {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOSUCHCHANNEL, Trailing: "No such channel"}
+		client.Encode(&m)
+		return
+	}
+
+	if len(message.Params) == 1 { // just channel name is provided
+		// return current settings for this user
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_UMODEIS, Params: []string{channel.GetMemberModes(client).String()}}
+		client.Encode(&m)
+		return
+	}
+
+	if !channel.MemberHasMode(client, ChannelModeOperator) { // Only channel operators can make these changes
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_CHANOPRIVSNEEDED, Params: []string{channel.Name}, Trailing: "You're not channel operator"}
+		client.Encode(&m)
+		return
+	}
+
+	setLimit := false
+	getUsers := false
+	needMask := false
+	currentPlace := 1
+	for _, modeFlags := range message.Params[1:] {
+		currentPlace++
+		modifier := ModeModifier(modeFlags[0])
+		switch modifier {
+		case ModeModifierAdd:
+		case ModeModifierRemove:
+		default:
+			//modifier := ModeModifierQuery
+			/*
+				m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_UMODEUNKNOWNFLAG, Trailing: "Unknown MODE flag"}
+				client.Encode(&m)
+				return
+			*/
+		}
+
+		for _, modeFlag := range modeFlags[1:] {
+			mode := ChannelMode(modeFlag)
+			_, ok := ChannelModes[mode]
+
+			if !ok {
+				m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_UMODEUNKNOWNFLAG, Trailing: "Unknown MODE flag"}
+				client.Encode(&m)
+				return
+			}
+
+			if modifier == ModeModifierAdd {
+
+				switch mode {
+				case ChannelModeCreator: // Can't make oneself a creator
+				case ChannelModeLimit:
+					setLimit = true
+				case ChannelModeOperator, ChannelModeVoice:
+					getUsers = true
+
+				default:
+					channel.AddMemberMode(client, mode)
+
+				}
+
+			} else if modifier == ModeModifierRemove {
+				switch mode {
+				case ChannelModeCreator: // Can't remove oneself as creator
+				//case ChannelModeBan: // Can't remove oneself from being restricted
+				default:
+					channel.RemoveMemberMode(client, mode)
+
+				}
+
+			}
+		}
+
+		if setLimit { // Get the number for setting the member limit cap
+			/*
+				limit, err := strconv.Atoi(message.Params[currentPlace])
+				if err != nil {
+
+				}
+			*/
+		}
+		if getUsers { // get users for either creating operators or adding voice
+
+		}
+		if needMask { // Set the ban mask
+
+		}
+	}
+
+	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_UMODEIS, Params: []string{client.Nickname, client.UserModeSet.String()}}
+	client.Encode(&m)
+	return
 }
