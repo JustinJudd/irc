@@ -672,3 +672,9 @@ func NamesHandler(message *irc.Message, client *Client) {
 		}
 	}
 }
+
+// MOTDHandler is a specialized CommandHandler to respond to channel IRC MOTD commands from a client
+// Implemented according to RFC 1459 Section 8.5 and RFC 2812 Section 3.4.1
+func MOTDHandler(message *irc.Message, client *Client) {
+	client.MOTD()
+}
