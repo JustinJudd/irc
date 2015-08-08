@@ -465,3 +465,30 @@ func (c *Channel) ListMessage(client *Client) (m *irc.Message) {
 	}
 	return
 }
+
+// Kick provides the capability for operators to kick members out of the channel
+func (c *Channel) Kick(client *Client, kicked []string, message string) {
+	if !c.HasMember(client) {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOTONCHANNEL, Params: []string{client.Nickname, c.Name}, Trailing: "You're not on that channel"}
+		client.Encode(&m)
+		return
+	}
+	if !c.MemberHasMode(client, ChannelModeOperator) {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_CHANOPRIVSNEEDED, Params: []string{client.Nickname, c.Name}, Trailing: "You're not channel operator"}
+		client.Encode(&m)
+		return
+	}
+
+	for _, kickedName := range kicked {
+		kickedClient, ok := c.Server.GetClientByNick(kickedName)
+		if !ok {
+			m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_USERNOTINCHANNEL, Params: []string{client.Nickname, kickedName, c.Name}, Trailing: "They aren't on that channel"}
+			client.Encode(&m)
+			return
+		}
+		m := irc.Message{Prefix: client.Prefix, Command: irc.KICK, Params: []string{c.Name, kickedName}, Trailing: message}
+		c.SendMessage(&m)
+		c.RemoveMember(kickedClient)
+		kickedClient.RemoveChannel(c)
+	}
+}

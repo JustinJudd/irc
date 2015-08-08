@@ -816,3 +816,44 @@ func ListHandler(message *irc.Message, client *Client) {
 	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_LISTEND, Params: []string{client.Nickname}, Trailing: "End of LIST"}
 	client.Encode(&m)
 }
+
+// KickHandler is a specialized CommandHandler to respond to channel IRC KICK commands from a client
+// Implemented according to RFC 1459 Section 4.2.8 and RFC 2812 Section 3.2.8
+func KickHandler(message *irc.Message, client *Client) {
+	if len(message.Params) == 0 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Trailing: "Not enough parameters"}
+		client.Encode(&m)
+		return
+	}
+	channels := strings.Split(message.Params[0], ",")
+	nicks := strings.Split(message.Params[1], ",")
+	if len(channels) != 1 && len(channels) != len(nicks) {
+		//"For the message to be syntactically correct, there MUST be either one channel parameter and multiple user parameter, or as many channel parameters as there are user parameters."
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Trailing: "Not enough parameters"}
+		client.Encode(&m)
+		return
+	}
+	comment := message.Trailing
+	if len(message.Params) == 3 {
+		comment = message.Params[2]
+	}
+	if len(channels) == 1 {
+		ch, ok := client.Server.GetChannel(channels[0])
+		if ok {
+			ch.Kick(client, nicks, comment)
+		} else {
+			m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOSUCHCHANNEL, Params: []string{client.Nickname, channels[0]}, Trailing: "No such channel"}
+			client.Encode(&m)
+		}
+		return
+	}
+	for i, channel := range channels {
+		ch, ok := client.Server.GetChannel(channel)
+		if ok {
+			ch.Kick(client, []string{nicks[i]}, comment)
+		} else {
+			m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOSUCHCHANNEL, Params: []string{client.Nickname, channel}, Trailing: "No such channel"}
+			client.Encode(&m)
+		}
+	}
+}
