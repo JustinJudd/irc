@@ -530,6 +530,7 @@ func ChannelModeHandler(message *irc.Message, client *Client) {
 			needsArgs = needsArgs[1:]
 			argsCount++
 			if argsCount > 3 { //Only allow 3 argument based flags per mode command
+				needsArgs = []fullFlag{}
 				break
 			}
 			mode.Param = param
@@ -584,6 +585,7 @@ func ChannelModeHandler(message *irc.Message, client *Client) {
 					_, ok := masks[mask]
 					if !ok {
 						channel.AddBanMask(mask)
+						mode.Param = mask
 						changes = append(changes, mode)
 					}
 
@@ -592,6 +594,7 @@ func ChannelModeHandler(message *irc.Message, client *Client) {
 					_, ok := masks[mask]
 					if !ok {
 						channel.AddExceptionMask(mask)
+						mode.Param = mask
 						changes = append(changes, mode)
 					}
 
@@ -600,6 +603,7 @@ func ChannelModeHandler(message *irc.Message, client *Client) {
 					_, ok := masks[mask]
 					if !ok {
 						channel.AddInvitationMask(mask)
+						mode.Param = mask
 						changes = append(changes, mode)
 					}
 
@@ -613,8 +617,10 @@ func ChannelModeHandler(message *irc.Message, client *Client) {
 				switch mod { // Set if flag is adding a removing a mode
 				case ModeModifierAdd:
 					modifier = ModeModifierAdd
+					continue
 				case ModeModifierRemove:
 					modifier = ModeModifierRemove
+					continue
 
 				}
 				flag := ChannelMode(char)
@@ -625,7 +631,23 @@ func ChannelModeHandler(message *irc.Message, client *Client) {
 					if modifier == ModeModifierAdd {
 						needsArgs = append(needsArgs, fullFlag{modifier, flag, ""})
 					}
-				default:
+				case ChannelModeAnonymous, ChannelModeInviteOnly, ChannelModeModerated, ChannelModeNoOutsideMessages,
+					ChannelModePrivate, ChannelModeSecret, ChannelModeQuiet, ChannelModeReOp, ChannelModeTopic:
+
+					if flag == ChannelModeAnonymous {
+						switch channel.Name[0] {
+						case '#', '+': // # and + channels can't be anonymous
+							m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_UNKNOWNMODE, Params: []string{client.Nickname, string(flag)}, Trailing: "is unknown mode char to me for " + channel.Name}
+							client.Encode(&m)
+							continue
+						case '!': // ! Channels can only have anonymous flag set, not unset
+							if modifier == ModeModifierRemove {
+								m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_UNKNOWNMODE, Params: []string{client.Nickname, string(flag)}, Trailing: "is unknown mode char to me for " + channel.Name}
+								client.Encode(&m)
+								continue
+							}
+						}
+					}
 					found := channel.HasMode(flag)
 					if modifier == ModeModifierAdd {
 
@@ -648,10 +670,67 @@ func ChannelModeHandler(message *irc.Message, client *Client) {
 							changes = append(changes, fullFlag{modifier, flag, ""})
 						}
 					}
+				default:
+					m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_UNKNOWNMODE, Params: []string{client.Nickname, string(flag)}, Trailing: "is unknown mode char to me for " + channel.Name}
+					client.Encode(&m)
 				}
 			}
 
 		}
+	}
+
+	if len(changes) == 0 { // No changes were made
+
+		if len(needsArgs) != 0 { // query instead of modification
+			arg := needsArgs[0] //just return information on just one flag
+
+			m := irc.Message{Prefix: client.Server.Prefix, Params: []string{client.Nickname}}
+			switch arg.ChannelMode {
+			case ChannelModeBan:
+				m.Command = irc.RPL_BANLIST
+				for mask := range channel.GetBanMasks() {
+					p := irc.ParsePrefix(mask)
+					fmt.Println("New BanMask: ", p.String())
+					m.Params = []string{client.Nickname, channel.Name, mask}
+
+					client.Encode(&m)
+				}
+				m.Params = []string{client.Nickname, channel.Name}
+				m.Trailing = "End of channel ban list"
+				m.Command = irc.RPL_ENDOFBANLIST
+				client.Encode(&m)
+
+			case ChannelModeExceptionMask:
+				m.Command = irc.RPL_EXCEPTLIST
+
+				for mask := range channel.GetExceptionMasks() {
+					m.Params = []string{client.Nickname, channel.Name, mask}
+
+					client.Encode(&m)
+				}
+
+				m.Params = []string{client.Nickname, channel.Name}
+				m.Trailing = "End of channel exception list"
+				m.Command = irc.RPL_ENDOFEXCEPTLIST
+				client.Encode(&m)
+
+			case ChannelModeInvitationMask:
+				m.Command = irc.RPL_INVITELIST
+				for mask := range channel.GetInvitationMasks() {
+					m.Params = []string{client.Nickname, channel.Name, mask}
+
+					client.Encode(&m)
+				}
+
+				m.Params = []string{client.Nickname, channel.Name}
+				m.Trailing = "End of channel invite list"
+				m.Command = irc.RPL_ENDOFINVITELIST
+				client.Encode(&m)
+
+			}
+
+		}
+		return
 	}
 
 	changeString := ""

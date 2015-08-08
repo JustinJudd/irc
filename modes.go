@@ -113,28 +113,6 @@ const (
 	ChannelModeInvitationMask ChannelMode = 'I'
 )
 
-// ChannelModes contains the supported channel modes
-// Currently supported modes are just those in RFC 1459
-var ChannelModes = map[ChannelMode]interface{}{
-	//ChannelModeCreator:           nil,
-	ChannelModeOperator: nil,
-	ChannelModeVoice:    nil,
-	//ChannelModeAnonymous:         nil,
-	ChannelModeInviteOnly:        nil,
-	ChannelModeModerated:         nil,
-	ChannelModeNoOutsideMessages: nil,
-	//ChannelModeQuiet:             nil,
-	ChannelModePrivate: nil,
-	ChannelModeSecret:  nil,
-	//ChannelModeReOp:              nil,
-	ChannelModeTopic: nil,
-	ChannelModeKey:   nil,
-	ChannelModeLimit: nil,
-	ChannelModeBan:   nil,
-	//ChannelModeExceptionMask:     nil,
-	//ChannelModeInvitationMask:    nil,
-}
-
 // ChannelModeSet represents a set of active ChannelModes
 type ChannelModeSet struct {
 	modes map[ChannelMode]interface{}
@@ -203,7 +181,10 @@ func (c *ChannelModeSet) String() string {
 		params = append(params, param)
 	}
 	for _, param := range params {
-		s += fmt.Sprintf(" %v", param)
+		if param != nil {
+			s += fmt.Sprintf(" %v", param)
+		}
+
 	}
 
 	return s
