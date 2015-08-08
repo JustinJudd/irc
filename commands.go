@@ -63,7 +63,7 @@ func NickHandler(message *irc.Message, client *Client) {
 
 	var m irc.Message
 	name := client.Server.Config.Name
-	nickname := client.Nickname
+	//nickname := client.Nickname
 
 	if len(message.Params) == 0 {
 		m = irc.Message{Prefix: &irc.Prefix{Name: name}, Command: irc.ERR_NONICKNAMEGIVEN, Trailing: "No nickname given"}
@@ -88,10 +88,12 @@ func NickHandler(message *irc.Message, client *Client) {
 			client.Nickname = newNickname
 			client.Server.AddClientNick(client)
 			client.Welcome()
-		} else { //change client name
-			client.Nickname = newNickname
-			client.Server.UpdateClientNick(client, nickname)
+		} else if len(client.Username) != 0 { //change client name
+			fmt.Println("Changing nick from", client.Nickname, "to", newNickname)
+			client.UpdateNick(newNickname)
 			//fmt.Println("Updating client name")
+		} else {
+			client.Nickname = newNickname
 		}
 	}
 

@@ -254,6 +254,14 @@ func (c *Channel) RemoveMember(client *Client) {
 	}
 }
 
+func (c *Channel) UpdateMemberNick(client *Client, oldNick string) {
+	c.membersMutex.Lock()
+	defer c.membersMutex.Unlock()
+	modes := c.members[oldNick]
+	delete(c.members, oldNick)
+	c.members[client.Nickname] = modes
+}
+
 // HasMember returns if a client is an existing member of this channel
 func (c *Channel) HasMember(client *Client) bool {
 	c.membersMutex.RLock()

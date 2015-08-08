@@ -32,7 +32,7 @@ type Client struct {
 	AwayMessage string
 
 	channels     map[string]*Channel
-	channelMutex sync.Mutex
+	channelMutex sync.RWMutex
 
 	*UserModeSet
 }
@@ -212,4 +212,21 @@ func (c *Client) RemoveChannel(channel *Channel) {
 // GetChannels gets a list of channels this client is joined to
 func (c *Client) GetChannels() map[string]*Channel {
 	return c.channels
+}
+
+// UpdateNick updates the clients nicknamae to a new nickname
+func (c *Client) UpdateNick(newNick string) {
+	oldNick := c.Nickname
+	c.Nickname = newNick
+
+	c.Server.UpdateClientNick(c, oldNick)
+	c.channelMutex.RLock()
+	defer c.channelMutex.RUnlock()
+	for _, channel := range c.channels {
+		channel.UpdateMemberNick(c, oldNick)
+	}
+	m := irc.Message{Prefix: c.Prefix, Command: irc.NICK, Trailing: newNick}
+
+	c.Encode(&m)
+	c.Prefix.Name = newNick
 }
