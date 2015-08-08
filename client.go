@@ -126,7 +126,7 @@ func (c *Client) Welcome() {
 	c.Prefix = &irc.Prefix{Name: c.Nickname, User: c.Name, Host: c.Host}
 
 	m := irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_WELCOME,
-		Params: []string{c.Nickname, c.Server.Config.Welcome}}
+		Params: []string{c.Nickname, "Welcome to the Internet Relay Network", c.Prefix.String()}}
 
 	err := c.Encode(&m)
 	if err != nil {
@@ -134,7 +134,7 @@ func (c *Client) Welcome() {
 	}
 
 	m = irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_YOURHOST,
-		Params: []string{c.Nickname, fmt.Sprintf("Your host is %s", c.Server.Config.Name)}}
+		Params: []string{c.Nickname, fmt.Sprintf("Your host is %s, running version %s", c.Server.Config.Name, c.Server.Config.Version)}}
 
 	err = c.Encode(&m)
 	if err != nil {
@@ -157,10 +157,23 @@ func (c *Client) Welcome() {
 		return
 	}
 
-	m = irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_MOTDSTART,
+	// Send MOTD
+	c.MOTD()
+
+}
+
+// MOTD returns the Message of the Day of the server to the client
+func (c *Client) MOTD() {
+
+	if len(c.Server.Config.MOTD) == 0 {
+		m := irc.Message{Prefix: c.Server.Prefix, Command: irc.ERR_NOMOTD, Params: []string{c.Nickname}, Trailing: "MOTD File is missing"}
+		c.Encode(&m)
+	}
+
+	m := irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_MOTDSTART,
 		Params: []string{c.Nickname, fmt.Sprintf("%s  - Message of the day", c.Server.Config.Name)}}
 
-	err = c.Encode(&m)
+	err := c.Encode(&m)
 	if err != nil {
 		return
 	}

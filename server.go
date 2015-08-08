@@ -32,7 +32,7 @@ type Server struct {
 type ServerConfig struct {
 	Name      string
 	MOTD      string
-	Welcome   string
+	Version   string
 	TLSConfig *tls.Config
 	Addr      string
 
@@ -49,6 +49,12 @@ func NewServer(config ServerConfig) *Server {
 	s.clientsByNick = map[string]*Client{}
 	s.Prefix = &irc.Prefix{Name: config.Name}
 	s.channels = map[string]*Channel{}
+	if len(s.Config.Name) == 0 {
+		s.Config.Name = "localhost"
+	}
+	if len(s.Config.Version) == 0 {
+		s.Config.Version = "1.0"
+	}
 	return &s
 }
 

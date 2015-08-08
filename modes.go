@@ -1,6 +1,9 @@
 package irc
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 // UserMode  - RFC 1459 Section 4.2.3.2 and RFC 2812 Section 3.1.5
 type UserMode rune
@@ -153,6 +156,13 @@ func (c *ChannelModeSet) AddMode(mode ChannelMode) {
 
 }
 
+// AddModeWithValue adds a ChannelMode as active with a value
+func (c *Channel) AddModeWithValue(mode ChannelMode, value interface{}) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.modes[mode] = value
+}
+
 // RemoveMode removes the given mode from the active set
 func (c *ChannelModeSet) RemoveMode(mode ChannelMode) {
 	c.mutex.Lock()
@@ -170,14 +180,30 @@ func (c *ChannelModeSet) HasMode(mode ChannelMode) bool {
 
 }
 
+// GetMode determines if the ChannelModeSet contains the given ChannelMode
+func (c *ChannelModeSet) GetMode(mode ChannelMode) interface{} {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+	return c.modes[mode]
+
+}
+
 // String returns the ChannelModeSet formatted for the MODE queries
 func (c *ChannelModeSet) String() string {
-	s := ""
-	if len(c.modes) > 0 {
-		s = "+"
-	}
-	for m := range c.modes {
+	s := "+"
+
+	params := []interface{}{}
+	for m, param := range c.modes {
+		switch m {
+		case ChannelModeKey, ChannelModeLimit, ChannelModeModerated, ChannelModeAnonymous, ChannelModeInviteOnly, ChannelModePrivate, ChannelModeSecret, ChannelModeTopic:
+		default:
+			continue
+		}
 		s += string(m)
+		params = append(params, param)
+	}
+	for _, param := range params {
+		s += fmt.Sprintf(" %v", param)
 	}
 
 	return s

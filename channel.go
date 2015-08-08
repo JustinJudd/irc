@@ -36,9 +36,9 @@ func (c *Channel) Join(client *Client, key string) {
 	if c.HasMember(client) { // client is already in this channel
 		return
 	}
-	if len(c.Key) != 0 { //if key is required, verify that client provided matching key
+	if c.HasMode(ChannelModeKey) { //if key is required, verify that client provided matching key
 		if c.Key != key {
-			m := irc.Message{Command: irc.ERR_BADCHANNELKEY}
+			m := irc.Message{Prefix: c.Server.Prefix, Command: irc.ERR_BADCHANNELKEY, Params: []string{client.Nickname, c.Name}, Trailing: "Cannot join channel (+k)"}
 			err := client.Encode(&m)
 			if err != nil {
 				println(err.Error())
@@ -46,6 +46,11 @@ func (c *Channel) Join(client *Client, key string) {
 			return
 		}
 	}
+	if c.HasMode(ChannelModeLimit) && c.GetMemberCount() >= c.GetLimit() { // Limit flag is set and limit is met
+		m := irc.Message{Prefix: c.Server.Prefix, Command: irc.ERR_CHANNELISFULL, Params: []string{client.Nickname, c.Name}, Trailing: "Cannot join channel (+l)"}
+		client.Encode(&m)
+	}
+
 	creator := c.GetMemberCount() == 0
 
 	c.AddMember(client)
@@ -55,6 +60,10 @@ func (c *Channel) Join(client *Client, key string) {
 		// Creator should be a channel operator - Maybe check if it is a "safe" channel
 
 		c.AddMemberMode(client, ChannelModeOperator)
+		if len(key) != 0 {
+			c.SetKey(key)
+
+		}
 	}
 
 	var m irc.Message
@@ -66,6 +75,37 @@ func (c *Channel) Join(client *Client, key string) {
 	}
 
 	//Notify existing members that new member is joining
+	m = irc.Message{Prefix: client.Prefix, Command: irc.JOIN, Params: []string{c.Name}}
+	c.SendMessage(&m)
+
+	c.Names(client)
+
+}
+
+// SetKey sets the channel key
+func (c *Channel) SetKey(key string) {
+	c.AddModeWithValue(ChannelModeKey, key)
+}
+
+// GetKey gets the key for the channel
+func (c *Channel) GetKey() string {
+	val := c.GetMode(ChannelModeKey)
+	if val == nil {
+		return ""
+	}
+	return val.(string)
+
+}
+
+// Names responds to to IRC NAMES command for the channel
+func (c *Channel) Names(client *Client) {
+
+	if c.HasMode(ChannelModeSecret) && !c.HasMember(client) { // If channel is secret and client isn't a member, don't reveal it
+		return
+	}
+	if c.HasMode(ChannelModePrivate) && !c.HasMember(client) { // If channel is private and client isn't a member, don't reply
+		return
+	}
 
 	allMembers := make([]string, len(c.members))
 	i := 0
@@ -73,36 +113,46 @@ func (c *Channel) Join(client *Client, key string) {
 		allMembers[i] = member
 		i++
 	}
-
 	// send list of users in channel
+
+	//channelPrefix := ""
+	// RFC 2812 defines other channel prefixes
+	channelPrefix := "="
+	if c.HasMode(ChannelModeSecret) {
+		channelPrefix = "@"
+	}
+	if c.HasMode(ChannelModePrivate) {
+		channelPrefix = "*"
+	}
+
 	for i := 0; i < (len(c.members)/20)+1; i++ {
-		memberStr := "= " + c.Name + " :"
+		memberStr := ""
 		end := (i + 1) * 20
 		if end > len(c.members) {
 			end = len(c.members)
 		}
-		m := irc.Message{Prefix: client.Prefix, Command: irc.JOIN, Params: []string{c.Name}}
+
 		for _, member := range allMembers[i*20 : end] {
 			mClient, _ := client.Server.GetClientByNick(member)
 
 			if mClient != nil {
 				if c.MemberHasMode(mClient, ChannelModeOperator) {
 					memberStr += "@"
+				} else if c.MemberHasMode(mClient, ChannelModeVoice) {
+					memberStr += "+"
 				}
 				memberStr += mClient.Nickname + " "
 
-				mClient.Encode(&m)
 			}
 
 		}
-		m = irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_NAMREPLY, Params: []string{client.Nickname, memberStr}}
+		m := irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_NAMREPLY, Params: []string{client.Nickname, channelPrefix, c.Name}, Trailing: memberStr}
 		client.Encode(&m)
 
 	}
 
-	m = irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_ENDOFNAMES, Params: []string{client.Nickname, c.Name}, Trailing: "End of NAMES list"}
+	m := irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_ENDOFNAMES, Params: []string{client.Nickname, c.Name}, Trailing: "End of NAMES list"}
 	client.Encode(&m)
-
 }
 
 // Part handles when a client leaves a channel
@@ -134,7 +184,7 @@ func (c *Channel) Quit(client *Client, message string) {
 		return
 	}
 
-	m := irc.Message{Prefix: client.Prefix, Command: irc.QUIT}
+	m := irc.Message{Prefix: client.Prefix, Command: irc.QUIT, Params: []string{c.Name}}
 	if len(message) != 0 {
 		m.Trailing = message
 	}
@@ -241,6 +291,7 @@ func (c *Channel) RemoveMemberMode(client *Client, mode ChannelMode) {
 
 }
 
+// GetMemberModes returns the Channel Modes active for a member
 func (c *Channel) GetMemberModes(client *Client) *ChannelModeSet {
 	c.membersMutex.RLock()
 	defer c.membersMutex.RUnlock()
@@ -330,5 +381,71 @@ func (c *Channel) TopicCommand(client *Client, topic string) {
 	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_CHANOPRIVSNEEDED, Params: []string{c.Name}, Trailing: "You're not channel operator"}
 	client.Encode(&m)
 	return
+
+}
+
+// AddBanMask sets the channel ban mask
+func (c *Channel) AddBanMask(mask string) {
+	masks := c.GetBanMasks()
+	masks[mask] = nil
+	c.AddModeWithValue(ChannelModeBan, masks)
+}
+
+// GetBanMasks gets the ban masks for the channel
+func (c *Channel) GetBanMasks() map[string]interface{} {
+	val := c.GetMode(ChannelModeBan)
+	if val == nil {
+		return make(map[string]interface{}, 0)
+	}
+	return val.(map[string]interface{})
+
+}
+
+// AddExceptionMask sets the channel exception mask
+func (c *Channel) AddExceptionMask(mask string) {
+	masks := c.GetExceptionMasks()
+	masks[mask] = nil
+	c.AddModeWithValue(ChannelModeExceptionMask, masks)
+}
+
+// GetExceptionMasks gets the exception masks for the channel
+func (c *Channel) GetExceptionMasks() map[string]interface{} {
+	val := c.GetMode(ChannelModeExceptionMask)
+	if val == nil {
+		return make(map[string]interface{}, 0)
+	}
+	return val.(map[string]interface{})
+
+}
+
+// AddInvitationMask sets the channel invitation mask
+func (c *Channel) AddInvitationMask(mask string) {
+	masks := c.GetInvitationMasks()
+	masks[mask] = nil
+	c.AddModeWithValue(ChannelModeInvitationMask, masks)
+}
+
+// GetInvitationMasks gets the invitation masks for the channel
+func (c *Channel) GetInvitationMasks() map[string]interface{} {
+	val := c.GetMode(ChannelModeInvitationMask)
+	if val == nil {
+		return make(map[string]interface{}, 0)
+	}
+	return val.(map[string]interface{})
+
+}
+
+// SetLimit sets the channel member limit
+func (c *Channel) SetLimit(limit int) {
+	c.AddModeWithValue(ChannelModeLimit, limit)
+}
+
+// GetLimit gets the member limit for the channel
+func (c *Channel) GetLimit() int {
+	val := c.GetMode(ChannelModeLimit)
+	if val == nil {
+		return 0
+	}
+	return val.(int)
 
 }

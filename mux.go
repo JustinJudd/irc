@@ -26,7 +26,7 @@ func (c *CommandsMux) HandleFunc(command string, handler CommandHandlerFunc) {
 func (c *CommandsMux) ServeIRC(message *irc.Message, client *Client) {
 	h, ok := c.commands[message.Command]
 	if !ok {
-		m := irc.Message{Command: irc.ERR_UNKNOWNCOMMAND}
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_UNKNOWNCOMMAND, Params: []string{client.Nickname}}
 		client.Encode(&m)
 		return
 	}

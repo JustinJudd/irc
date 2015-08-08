@@ -2,6 +2,7 @@ package irc
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/sorcix/irc"
@@ -351,7 +352,7 @@ func whoLine(client *Client, channel *Channel, recipientClient string) string {
 // Implemented according to RFC 1459 Section 4.2.4 and RFC 2812 Section 3.2.4
 func TopicHandler(message *irc.Message, client *Client) {
 	if len(message.Params) == 0 {
-		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Trailing: "Not enough parameters"}
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Params: []string{client.Nickname}, Trailing: "Not enough parameters"}
 		client.Encode(&m)
 		return
 	}
@@ -359,7 +360,7 @@ func TopicHandler(message *irc.Message, client *Client) {
 	channelName := message.Params[0]
 	channel, ok := client.Server.GetChannel(channelName)
 	if !ok {
-		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOSUCHCHANNEL, Params: []string{channelName}, Trailing: "No such channel"}
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOSUCHCHANNEL, Params: []string{client.Nickname, channelName}, Trailing: "No such channel"}
 		client.Encode(&m)
 		return
 	}
@@ -380,7 +381,7 @@ func AwayHandler(message *irc.Message, client *Client) {
 	if len(message.Params) == 0 && len(message.Trailing) == 0 {
 		client.AwayMessage = ""
 		client.RemoveMode(UserModeAway)
-		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_UNAWAY, Trailing: "You are no longer marked as being away"}
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_UNAWAY, Params: []string{client.Nickname}, Trailing: "You are no longer marked as being away"}
 		client.Encode(&m)
 		return
 	}
@@ -390,7 +391,7 @@ func AwayHandler(message *irc.Message, client *Client) {
 		client.AwayMessage = strings.Join(message.Params, " ")
 	}
 	client.AddMode(UserModeAway)
-	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_NOWAWAY, Trailing: "You have been marked as being away"}
+	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_NOWAWAY, Params: []string{client.Nickname}, Trailing: "You have been marked as being away"}
 
 	client.Encode(&m)
 	return
@@ -401,7 +402,7 @@ func AwayHandler(message *irc.Message, client *Client) {
 // Implemented according to RFC 1459 Section 4.2.3 and RFC 2812 Section 3.1.5 and RFC 2811
 func ModeHandler(message *irc.Message, client *Client) {
 	if len(message.Params) == 0 {
-		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Trailing: "Not enough parameters"}
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Params: []string{client.Nickname}, Trailing: "Not enough parameters"}
 		client.Encode(&m)
 		return
 	}
@@ -420,21 +421,21 @@ func ModeHandler(message *irc.Message, client *Client) {
 // Implemented according to RFC 1459 Section 4.2.3.2 and RFC 2812 Section 3.1.5
 func UserModeHandler(message *irc.Message, client *Client) {
 	if len(message.Params) == 0 {
-		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Trailing: "Not enough parameters"}
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Params: []string{client.Nickname}, Trailing: "Not enough parameters"}
 		client.Encode(&m)
 		return
 	}
 
 	username := message.Params[0]
 	if username != client.Nickname {
-		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_USERSDONTMATCH, Trailing: "Cannot change mode for other users"}
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_USERSDONTMATCH, Params: []string{client.Nickname}, Trailing: "Cannot change mode for other users"}
 		client.Encode(&m)
 		return
 	}
 
 	if len(message.Params) == 1 { // just nickname is provided
 		// return current settings for this user
-		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_UMODEIS, Params: []string{client.UserModeSet.String()}}
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_UMODEIS, Params: []string{client.Nickname, client.UserModeSet.String()}}
 		client.Encode(&m)
 		return
 	}
@@ -445,7 +446,7 @@ func UserModeHandler(message *irc.Message, client *Client) {
 		case ModeModifierAdd:
 		case ModeModifierRemove:
 		default:
-			m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_UMODEUNKNOWNFLAG, Trailing: "Unknown MODE flag"}
+			m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_UMODEUNKNOWNFLAG, Params: []string{client.Nickname}, Trailing: "Unknown MODE flag"}
 			client.Encode(&m)
 			return
 		}
@@ -454,7 +455,7 @@ func UserModeHandler(message *irc.Message, client *Client) {
 			mode := UserMode(modeFlag)
 			_, ok := UserModes[mode]
 			if !ok || mode == UserModeAway { // Away flag should only be set with AWAY command
-				m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_UMODEUNKNOWNFLAG, Trailing: "Unknown MODE flag"}
+				m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_UMODEUNKNOWNFLAG, Params: []string{client.Nickname}, Trailing: "Unknown MODE flag"}
 				client.Encode(&m)
 				return
 			}
@@ -501,90 +502,173 @@ func ChannelModeHandler(message *irc.Message, client *Client) {
 	}
 
 	if len(message.Params) == 1 { // just channel name is provided
-		// return current settings for this user
-		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_UMODEIS, Params: []string{channel.GetMemberModes(client).String()}}
+		// return current settings for this channel
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_CHANNELMODEIS, Params: []string{client.Nickname, channel.Name, channel.ChannelModeSet.String()}}
 		client.Encode(&m)
 		return
 	}
 
 	if !channel.MemberHasMode(client, ChannelModeOperator) { // Only channel operators can make these changes
-		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_CHANOPRIVSNEEDED, Params: []string{channel.Name}, Trailing: "You're not channel operator"}
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_CHANOPRIVSNEEDED, Params: []string{client.Nickname, channel.Name}, Trailing: "You're not channel operator"}
 		client.Encode(&m)
 		return
 	}
 
-	setLimit := false
-	getUsers := false
-	needMask := false
-	currentPlace := 1
-	for _, modeFlags := range message.Params[1:] {
-		currentPlace++
-		modifier := ModeModifier(modeFlags[0])
-		switch modifier {
-		case ModeModifierAdd:
-		case ModeModifierRemove:
-		default:
-			//modifier := ModeModifierQuery
-			/*
-				m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_UMODEUNKNOWNFLAG, Trailing: "Unknown MODE flag"}
-				client.Encode(&m)
-				return
-			*/
-		}
+	type fullFlag struct {
+		ModeModifier
+		ChannelMode
+		Param string
+	}
 
-		for _, modeFlag := range modeFlags[1:] {
-			mode := ChannelMode(modeFlag)
-			_, ok := ChannelModes[mode]
+	needsArgs := []fullFlag{}
+	changes := []fullFlag{}
+	argsCount := 0
 
-			if !ok {
-				m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_UMODEUNKNOWNFLAG, Trailing: "Unknown MODE flag"}
-				client.Encode(&m)
-				return
+	for _, param := range message.Params[1:] {
+		if len(needsArgs) != 0 { // This param will be an arg
+			mode := needsArgs[0]
+			needsArgs = needsArgs[1:]
+			argsCount++
+			if argsCount > 3 { //Only allow 3 argument based flags per mode command
+				break
 			}
-
-			if modifier == ModeModifierAdd {
-
-				switch mode {
-				case ChannelModeCreator: // Can't make oneself a creator
-				case ChannelModeLimit:
-					setLimit = true
-				case ChannelModeOperator, ChannelModeVoice:
-					getUsers = true
-
-				default:
-					channel.AddMemberMode(client, mode)
+			mode.Param = param
+			switch mode.ChannelMode {
+			case ChannelModeOperator, ChannelModeVoice:
+				n, ok := client.Server.GetClientByNick(param)
+				if ok {
+					found := channel.MemberHasMode(client, mode.ChannelMode)
+					if mode.ModeModifier == ModeModifierAdd {
+						channel.AddMemberMode(n, mode.ChannelMode)
+						if !found {
+							changes = append(changes, mode)
+						}
+					} else {
+						channel.RemoveMemberMode(n, mode.ChannelMode)
+						if found {
+							changes = append(changes, mode)
+						}
+					}
 
 				}
+			case ChannelModeLimit:
+				l, err := strconv.Atoi(param)
+				if err == nil {
+					channel.SetLimit(l)
+					changes = append(changes, mode)
+				}
+			case ChannelModeKey:
+				channel.SetKey(param)
+				changes = append(changes, mode)
+			case ChannelModeBan, ChannelModeExceptionMask, ChannelModeInvitationMask:
 
-			} else if modifier == ModeModifierRemove {
-				switch mode {
-				case ChannelModeCreator: // Can't remove oneself as creator
-				//case ChannelModeBan: // Can't remove oneself from being restricted
-				default:
-					channel.RemoveMemberMode(client, mode)
+				fillMask := func(mask string) string {
+					p := irc.ParsePrefix(param)
+					if len(p.Name) == 0 {
+						p.Name = "*"
+					}
+					if len(p.User) == 0 {
+						p.User = "*"
+					}
+					if len(p.Host) == 0 {
+						p.Host = "*"
+					}
+
+					return p.String()
+				}
+
+				mask := fillMask(param)
+				switch mode.ChannelMode {
+				case ChannelModeBan:
+					masks := channel.GetBanMasks()
+					_, ok := masks[mask]
+					if !ok {
+						channel.AddBanMask(mask)
+						changes = append(changes, mode)
+					}
+
+				case ChannelModeExceptionMask:
+					masks := channel.GetExceptionMasks()
+					_, ok := masks[mask]
+					if !ok {
+						channel.AddExceptionMask(mask)
+						changes = append(changes, mode)
+					}
+
+				case ChannelModeInvitationMask:
+					masks := channel.GetInvitationMasks()
+					_, ok := masks[mask]
+					if !ok {
+						channel.AddInvitationMask(mask)
+						changes = append(changes, mode)
+					}
 
 				}
 
 			}
-		}
-
-		if setLimit { // Get the number for setting the member limit cap
-			/*
-				limit, err := strconv.Atoi(message.Params[currentPlace])
-				if err != nil {
+		} else { // This should be a mode flag or series of mode flags
+			modifier := ModeModifierAdd
+			for _, char := range param {
+				mod := ModeModifier(char)
+				switch mod { // Set if flag is adding a removing a mode
+				case ModeModifierAdd:
+					modifier = ModeModifierAdd
+				case ModeModifierRemove:
+					modifier = ModeModifierRemove
 
 				}
-			*/
-		}
-		if getUsers { // get users for either creating operators or adding voice
-
-		}
-		if needMask { // Set the ban mask
+				flag := ChannelMode(char)
+				switch flag {
+				case ChannelModeVoice, ChannelModeOperator, ChannelModeExceptionMask, ChannelModeInvitationMask, ChannelModeBan, ChannelModeLimit:
+					needsArgs = append(needsArgs, fullFlag{modifier, flag, ""})
+				case ChannelModeKey:
+					if modifier == ModeModifierAdd {
+						needsArgs = append(needsArgs, fullFlag{modifier, flag, ""})
+					}
+				}
+			}
 
 		}
 	}
 
-	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_UMODEIS, Params: []string{client.Nickname, client.UserModeSet.String()}}
-	client.Encode(&m)
+	changeString := ""
+	paramsChanged := []string{}
+	previousMode := ModeModifier(' ')
+	for _, change := range changes {
+		if len(change.Param) != 0 {
+			paramsChanged = append(paramsChanged, change.Param)
+		}
+		if change.ModeModifier != previousMode {
+			changeString += string(change.ModeModifier)
+		}
+		changeString += string(change.ChannelMode)
+		previousMode = change.ModeModifier
+	}
+
+	params := []string{channel.Name, changeString}
+	params = append(params, paramsChanged...)
+	m := irc.Message{Prefix: client.Prefix, Command: irc.MODE, Params: params}
+
+	// Notify channel members of channel changes
+	channel.SendMessage(&m)
 	return
+}
+
+// NamesHandler is a specialized CommandHandler to respond to channel IRC NAMES commands from a client
+// Implemented according to RFC 1459 Section 4.2.5 and RFC 2812 Section 3.2.5
+func NamesHandler(message *irc.Message, client *Client) {
+	if len(message.Params) == 0 { // Send NAMES response for all channels
+		for _, ch := range client.Server.channels {
+			ch.Names(client)
+		}
+	} else {
+		channelNames := strings.Split(message.Params[0], ",")
+		for _, channelName := range channelNames {
+			ch, ok := client.Server.GetChannel(channelName)
+			if ok {
+				ch.Names(client)
+			}
+
+		}
+	}
 }
