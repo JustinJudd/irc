@@ -1,6 +1,7 @@
 package irc
 
 import (
+	"strconv"
 	"strings"
 	"sync"
 
@@ -350,6 +351,7 @@ func (c *Channel) TopicCommand(client *Client, topic string) {
 
 	//Client is trying to get topic
 	if len(topic) == 0 { //Get channels topic
+
 		if len(c.Topic) == 0 { // No topic is not set
 			m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_NOTOPIC, Params: []string{c.Name}, Trailing: "No topic is set"}
 			client.Encode(&m)
@@ -448,4 +450,18 @@ func (c *Channel) GetLimit() int {
 	}
 	return val.(int)
 
+}
+
+// ListMessage creates and returns the message that should be sent for an IRC LIST query
+func (c *Channel) ListMessage(client *Client) (m *irc.Message) {
+
+	if c.HasMode(ChannelModeSecret) && !c.HasMember(client) { // If channel is secret and client isn't a member, don't reveal it
+		return
+	}
+	m = &irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_LIST, Params: []string{client.Nickname, c.Name, strconv.Itoa(c.GetMemberCount())}, Trailing: c.Topic + " "}
+	if c.HasMode(ChannelModePrivate) && !c.HasMember(client) { // If channel is private and client isn't a member, don't return topic
+		m.Trailing = " "
+		return
+	}
+	return
 }

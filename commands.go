@@ -359,7 +359,7 @@ func TopicHandler(message *irc.Message, client *Client) {
 
 	channelName := message.Params[0]
 	channel, ok := client.Server.GetChannel(channelName)
-	if !ok {
+	if !ok || channel.HasMode(ChannelModeSecret) {
 		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOSUCHCHANNEL, Params: []string{client.Nickname, channelName}, Trailing: "No such channel"}
 		client.Encode(&m)
 		return
@@ -625,6 +625,29 @@ func ChannelModeHandler(message *irc.Message, client *Client) {
 					if modifier == ModeModifierAdd {
 						needsArgs = append(needsArgs, fullFlag{modifier, flag, ""})
 					}
+				default:
+					found := channel.HasMode(flag)
+					if modifier == ModeModifierAdd {
+
+						if !found {
+							if flag == ChannelModePrivate && channel.HasMode(ChannelModeSecret) {
+								// Secret and private can't both be set
+								continue
+							}
+							if flag == ChannelModeSecret && channel.HasMode(ChannelModePrivate) {
+								// Secret and private can't both be set
+								channel.RemoveMode(ChannelModePrivate)
+							}
+							channel.AddMode(flag)
+							changes = append(changes, fullFlag{modifier, flag, ""})
+						}
+
+					} else {
+						if found {
+							channel.RemoveMode(flag)
+							changes = append(changes, fullFlag{modifier, flag, ""})
+						}
+					}
 				}
 			}
 
@@ -677,4 +700,40 @@ func NamesHandler(message *irc.Message, client *Client) {
 // Implemented according to RFC 1459 Section 8.5 and RFC 2812 Section 3.4.1
 func MOTDHandler(message *irc.Message, client *Client) {
 	client.MOTD()
+}
+
+// ListHandler is a specialized CommandHandler to respond to channel IRC LIST commands from a client
+// Implemented according to RFC 1459 Section 4.2.6 and RFC 2812 Section 3.2.6
+func ListHandler(message *irc.Message, client *Client) {
+
+	/* Deprecated in RFC 2812
+	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_LISTSTART, Params: []string{client.Nickname, "Channel :Users  Name"}}
+	client.Encode(&m)
+	*/
+
+	if len(message.Params) == 0 || len(message.Params[0]) == 0 { // Send LIST response for all channels
+		for _, ch := range client.Server.channels {
+			m := ch.ListMessage(client)
+			if m != nil {
+				fmt.Println(m.String())
+				client.Encode(m)
+			}
+
+		}
+	} else {
+		channelNames := strings.Split(message.Params[0], ",")
+		for _, channelName := range channelNames {
+			ch, ok := client.Server.GetChannel(channelName)
+			if ok {
+				m := ch.ListMessage(client)
+				if m != nil {
+					fmt.Println(m.String())
+					client.Encode(m)
+				}
+			}
+
+		}
+	}
+	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_LISTEND, Params: []string{client.Nickname}, Trailing: "End of LIST"}
+	client.Encode(&m)
 }
