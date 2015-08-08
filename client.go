@@ -40,7 +40,7 @@ type Client struct {
 func (s *Server) newClient(ircConn *irc.Conn, conn net.Conn) *Client {
 	client := &Client{Conn: ircConn, conn: conn, Server: s}
 	client.authorized = len(s.Config.Password) == 0
-	client.idleTimer = time.AfterFunc(time.Minute, client.idle)
+	client.idleTimer = time.AfterFunc(time.Minute*3, client.idle)
 	client.channels = map[string]*Channel{}
 	client.UserModeSet = NewUserModeSet()
 	return client
@@ -84,7 +84,7 @@ func (c *Client) handleIncoming() {
 		}
 
 		c.idleTimer.Stop()
-		c.idleTimer = time.AfterFunc(time.Minute, c.idle)
+		c.idleTimer = time.AfterFunc(time.Minute*3, c.idle)
 		if c.quitTimer != nil {
 			c.quitTimer.Stop()
 			c.quitTimer = nil
@@ -98,7 +98,7 @@ func (c *Client) handleIncoming() {
 
 func (c *Client) idle() {
 	c.Ping()
-	c.quitTimer = time.AfterFunc(time.Minute, c.quit)
+	c.quitTimer = time.AfterFunc(time.Minute*3, c.quit)
 }
 
 func (c *Client) quit() {
