@@ -245,3 +245,59 @@ func (c *Client) UpdateNick(newNick string) {
 
 	c.Prefix.Name = newNick
 }
+
+// GetVisible returns a map of clients visible to this client
+func (c *Client) GetVisible() map[string]*Client {
+	clients := map[string]*Client{}
+	for name, client := range c.Server.clientsByNick {
+		if client.HasMode(UserModeInvisible) {
+			continue
+		}
+		clients[name] = client
+	}
+	for _, channel := range c.channels {
+		for member := range channel.members {
+			tmp, ok := c.Server.GetClientByNick(member)
+			if ok {
+				clients[member] = tmp
+			}
+		}
+	}
+	return clients
+}
+
+// SendMessagetoVisible sends a message to all other visible clients
+func (c *Client) SendMessagetoVisible(m *irc.Message) {
+	for _, client := range c.GetVisible() {
+		client.Encode(m)
+	}
+}
+
+// SendWho rmanages responding to the WHO request for all visible clients of this client
+func (c *Client) SendWho() {
+	clients := map[string]*Client{}
+	for name, client := range c.Server.clientsByNick {
+		if client.HasMode(UserModeInvisible) {
+			continue
+		}
+		msg := whoLine(client, nil, c.Nickname)
+		m := irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_WHOREPLY, Params: strings.Fields(msg)}
+		c.Encode(&m)
+
+		clients[name] = client
+	}
+	for _, channel := range c.channels {
+		for member := range channel.members {
+			tmp, ok := c.Server.GetClientByNick(member)
+			_, alreadySent := clients[member]
+			if ok && !alreadySent {
+				msg := whoLine(tmp, channel, c.Nickname)
+				m := irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_WHOREPLY, Params: strings.Fields(msg)}
+				c.Encode(&m)
+				clients[member] = tmp
+			}
+		}
+	}
+	m := irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_ENDOFWHO, Params: []string{c.Nickname, "*"}, Trailing: "End of WHO list"}
+	c.Encode(&m)
+}

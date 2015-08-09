@@ -313,8 +313,10 @@ func NoticeHandler(message *irc.Message, client *Client) {
 // WhoHandler is a CommandHandler to respond to IRC WHO commands from a client
 // Implemented according to RFC 1459 Section 4.5.1 and RFC 2812 Section 3.6.1
 func WhoHandler(message *irc.Message, client *Client) {
-	if len(message.Params) == 0 {
-		//return listing of all users
+	if len(message.Params) == 0 || len(message.Params[0]) == 0 || message.Params[0][0] == '*' {
+		//return listing of all visible users - visible people and people in channels with this client
+		client.SendWho()
+
 		return
 	}
 	ch, ok := client.Server.GetChannel(message.Params[0])
