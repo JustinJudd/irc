@@ -112,6 +112,7 @@ func NickHandler(message *irc.Message, client *Client) {
 			//fmt.Println("Updating client name")
 		} else {
 			client.Nickname = newNickname
+			client.Server.UpdateClientNick(client, newNickname)
 		}
 	}
 
