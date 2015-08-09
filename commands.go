@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sorcix/irc"
 )
@@ -875,4 +876,17 @@ func KickHandler(message *irc.Message, client *Client) {
 			client.Encode(&m)
 		}
 	}
+}
+
+// TimeHandler is a specialized CommandHandler to respond to channel IRC TIME commands from a client
+// Implemented according to RFC 1459 Section 4.3.4 and RFC 2812 Section 3.4.6
+func TimeHandler(message *irc.Message, client *Client) {
+	if len(message.Params) != 0 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOSUCHSERVER, Params: []string{client.Nickname, message.Params[0]}, Trailing: "No such server"}
+		client.Encode(&m)
+		return
+	}
+
+	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_TIME, Params: []string{client.Nickname, client.Server.Config.Name}, Trailing: time.Now().Format(time.UnixDate)}
+	client.Encode(&m)
 }
