@@ -84,13 +84,15 @@ func (c *Channel) Join(client *Client, key string) {
 }
 
 // Names responds to to IRC NAMES command for the channel
-func (c *Channel) Names(client *Client) {
+func (c *Channel) Names(client *Client) []string {
 
-	if c.HasMode(ChannelModeSecret) && !c.HasMember(client) { // If channel is secret and client isn't a member, don't reveal it
-		return
+	var named []string
+	isMember := c.HasMember(client)
+	if c.HasMode(ChannelModeSecret) && !isMember { // If channel is secret and client isn't a member, don't reveal it
+		return named
 	}
-	if c.HasMode(ChannelModePrivate) && !c.HasMember(client) { // If channel is private and client isn't a member, don't reply
-		return
+	if c.HasMode(ChannelModePrivate) && !isMember { // If channel is private and client isn't a member, don't reply
+		return named
 	}
 
 	allMembers := make([]string, len(c.members))
@@ -120,6 +122,9 @@ func (c *Channel) Names(client *Client) {
 
 		for _, member := range allMembers[i*20 : end] {
 			mClient, _ := client.Server.GetClientByNick(member)
+			if mClient.HasMode(UserModeInvisible) && !isMember { //the requesting client shouldn't know about this client
+				continue
+			}
 
 			if mClient != nil {
 				if c.MemberHasMode(mClient, ChannelModeOperator) {
@@ -128,6 +133,7 @@ func (c *Channel) Names(client *Client) {
 					memberStr += "+"
 				}
 				memberStr += mClient.Nickname + " "
+				named = append(named, mClient.Nickname)
 
 			}
 
@@ -137,8 +143,7 @@ func (c *Channel) Names(client *Client) {
 
 	}
 
-	m := irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_ENDOFNAMES, Params: []string{client.Nickname, c.Name}, Trailing: "End of NAMES list"}
-	client.Encode(&m)
+	return named
 }
 
 // Part handles when a client leaves a channel

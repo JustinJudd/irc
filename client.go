@@ -273,8 +273,8 @@ func (c *Client) SendMessagetoVisible(m *irc.Message) {
 	}
 }
 
-// SendWho rmanages responding to the WHO request for all visible clients of this client
-func (c *Client) SendWho() {
+// Who rmanages responding to the WHO request for all visible clients of this client
+func (c *Client) Who() {
 	clients := map[string]*Client{}
 	for name, client := range c.Server.clientsByNick {
 		if client.HasMode(UserModeInvisible) {

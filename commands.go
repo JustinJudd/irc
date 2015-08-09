@@ -315,7 +315,7 @@ func NoticeHandler(message *irc.Message, client *Client) {
 func WhoHandler(message *irc.Message, client *Client) {
 	if len(message.Params) == 0 || len(message.Params[0]) == 0 || message.Params[0][0] == '*' {
 		//return listing of all visible users - visible people and people in channels with this client
-		client.SendWho()
+		client.Who()
 
 		return
 	}
@@ -786,18 +786,56 @@ func ChannelModeHandler(message *irc.Message, client *Client) {
 // Implemented according to RFC 1459 Section 4.2.5 and RFC 2812 Section 3.2.5
 func NamesHandler(message *irc.Message, client *Client) {
 	if len(message.Params) == 0 { // Send NAMES response for all channels
-		for _, ch := range client.Server.channels {
-			ch.Names(client)
-		}
-	} else {
-		channelNames := strings.Split(message.Params[0], ",")
-		for _, channelName := range channelNames {
-			ch, ok := client.Server.GetChannel(channelName)
-			if ok {
-				ch.Names(client)
-			}
 
+		named := map[string]interface{}{}
+		for _, ch := range client.Server.channels {
+			n := ch.Names(client)
+			for _, k := range n {
+				named[k] = nil
+			}
 		}
+		count := 0
+		memberStr := ""
+		for n, cl := range client.Server.clientsByNick {
+			_, alreadyNamed := named[n]
+			if !alreadyNamed && !cl.HasMode(UserModeInvisible) { //don't name people that are already named or that shouldn't be named
+				count++
+				if cl != nil {
+					if cl.HasMode(UserModeOperator) || cl.HasMode(UserModeLocalOperator) {
+						memberStr += "@"
+					}
+					memberStr += cl.Nickname + " "
+
+				}
+				if count%20 == 0 { // String is long enough, send message
+					m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_NAMREPLY, Params: []string{client.Nickname, "*", "*"}, Trailing: memberStr}
+					client.Encode(&m)
+					memberStr = ""
+				}
+
+			}
+		}
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_NAMREPLY, Params: []string{client.Nickname, "*", "*"}, Trailing: memberStr}
+		client.Encode(&m)
+		m = irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_ENDOFNAMES, Params: []string{client.Nickname, "*"}, Trailing: "End of NAMES list"}
+		client.Encode(&m)
+		return
+	}
+	if len(message.Params) == 2 { //Client has provided target server for the request
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOSUCHSERVER, Params: []string{client.Nickname, message.Params[0]}, Trailing: "No such server"}
+		client.Encode(&m)
+		return
+	}
+
+	channelNames := strings.Split(message.Params[0], ",")
+	for _, channelName := range channelNames {
+		ch, ok := client.Server.GetChannel(channelName)
+		if ok {
+			ch.Names(client)
+			m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_ENDOFNAMES, Params: []string{client.Nickname, ch.Name}, Trailing: "End of NAMES list"}
+			client.Encode(&m)
+		}
+
 	}
 }
 
