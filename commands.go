@@ -322,7 +322,7 @@ func WhoHandler(message *irc.Message, client *Client) {
 		for clientName := range ch.members {
 			cl, found := client.Server.GetClientByNick(clientName)
 
-			if found {
+			if found && !client.HasMode(UserModeInvisible) {
 				msg := whoLine(cl, ch, client.Nickname)
 				m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_WHOREPLY, Params: strings.Fields(msg)}
 				client.Encode(&m)
@@ -523,7 +523,11 @@ func ChannelModeHandler(message *irc.Message, client *Client) {
 
 	if len(message.Params) == 1 { // just channel name is provided
 		// return current settings for this channel
-		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_CHANNELMODEIS, Params: []string{client.Nickname, channel.Name, channel.ChannelModeSet.String()}}
+		modes := channel.ChannelModeSet.Copy()
+		if !channel.HasMember(client) { // only current members should see the channel key
+			modes.SetKey("")
+		}
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_CHANNELMODEIS, Params: []string{client.Nickname, channel.Name, modes.String()}}
 		client.Encode(&m)
 		return
 	}

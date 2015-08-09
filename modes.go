@@ -126,6 +126,16 @@ func NewChannelModeSet() *ChannelModeSet {
 	return &c
 }
 
+// Copy creates and returns a deep copy of a ChannelModeSet
+func (c *ChannelModeSet) Copy() *ChannelModeSet {
+	tmp := NewChannelModeSet()
+	for k, v := range c.modes {
+		tmp.modes[k] = v
+	}
+	return tmp
+
+}
+
 // AddMode adds a ChannelMode as active
 func (c *ChannelModeSet) AddMode(mode ChannelMode) {
 	c.mutex.Lock()
@@ -135,7 +145,7 @@ func (c *ChannelModeSet) AddMode(mode ChannelMode) {
 }
 
 // AddModeWithValue adds a ChannelMode as active with a value
-func (c *Channel) AddModeWithValue(mode ChannelMode, value interface{}) {
+func (c *ChannelModeSet) AddModeWithValue(mode ChannelMode, value interface{}) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	c.modes[mode] = value
@@ -188,4 +198,85 @@ func (c *ChannelModeSet) String() string {
 	}
 
 	return s
+}
+
+// AddBanMask sets the channel ban mask
+func (c *ChannelModeSet) AddBanMask(mask string) {
+	masks := c.GetBanMasks()
+	masks[mask] = nil
+	c.AddModeWithValue(ChannelModeBan, masks)
+}
+
+// GetBanMasks gets the ban masks for the channel
+func (c *ChannelModeSet) GetBanMasks() map[string]interface{} {
+	val := c.GetMode(ChannelModeBan)
+	if val == nil {
+		return make(map[string]interface{}, 0)
+	}
+	return val.(map[string]interface{})
+
+}
+
+// AddExceptionMask sets the channel exception mask
+func (c *ChannelModeSet) AddExceptionMask(mask string) {
+	masks := c.GetExceptionMasks()
+	masks[mask] = nil
+	c.AddModeWithValue(ChannelModeExceptionMask, masks)
+}
+
+// GetExceptionMasks gets the exception masks for the channel
+func (c *ChannelModeSet) GetExceptionMasks() map[string]interface{} {
+	val := c.GetMode(ChannelModeExceptionMask)
+	if val == nil {
+		return make(map[string]interface{}, 0)
+	}
+	return val.(map[string]interface{})
+
+}
+
+// AddInvitationMask sets the channel invitation mask
+func (c *ChannelModeSet) AddInvitationMask(mask string) {
+	masks := c.GetInvitationMasks()
+	masks[mask] = nil
+	c.AddModeWithValue(ChannelModeInvitationMask, masks)
+}
+
+// GetInvitationMasks gets the invitation masks for the channel
+func (c *ChannelModeSet) GetInvitationMasks() map[string]interface{} {
+	val := c.GetMode(ChannelModeInvitationMask)
+	if val == nil {
+		return make(map[string]interface{}, 0)
+	}
+	return val.(map[string]interface{})
+
+}
+
+// SetLimit sets the channel member limit
+func (c *ChannelModeSet) SetLimit(limit int) {
+	c.AddModeWithValue(ChannelModeLimit, limit)
+}
+
+// GetLimit gets the member limit for the channel
+func (c *ChannelModeSet) GetLimit() int {
+	val := c.GetMode(ChannelModeLimit)
+	if val == nil {
+		return 0
+	}
+	return val.(int)
+
+}
+
+// SetKey sets the channel key
+func (c *ChannelModeSet) SetKey(key string) {
+	c.AddModeWithValue(ChannelModeKey, key)
+}
+
+// GetKey gets the key if stored in the ChannelModeSet
+func (c *ChannelModeSet) GetKey() string {
+	val := c.GetMode(ChannelModeKey)
+	if val == nil {
+		return ""
+	}
+	return val.(string)
+
 }

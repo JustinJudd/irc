@@ -83,21 +83,6 @@ func (c *Channel) Join(client *Client, key string) {
 
 }
 
-// SetKey sets the channel key
-func (c *Channel) SetKey(key string) {
-	c.AddModeWithValue(ChannelModeKey, key)
-}
-
-// GetKey gets the key for the channel
-func (c *Channel) GetKey() string {
-	val := c.GetMode(ChannelModeKey)
-	if val == nil {
-		return ""
-	}
-	return val.(string)
-
-}
-
 // Names responds to to IRC NAMES command for the channel
 func (c *Channel) Names(client *Client) {
 
@@ -392,72 +377,6 @@ func (c *Channel) TopicCommand(client *Client, topic string) {
 	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_CHANOPRIVSNEEDED, Params: []string{c.Name}, Trailing: "You're not channel operator"}
 	client.Encode(&m)
 	return
-
-}
-
-// AddBanMask sets the channel ban mask
-func (c *Channel) AddBanMask(mask string) {
-	masks := c.GetBanMasks()
-	masks[mask] = nil
-	c.AddModeWithValue(ChannelModeBan, masks)
-}
-
-// GetBanMasks gets the ban masks for the channel
-func (c *Channel) GetBanMasks() map[string]interface{} {
-	val := c.GetMode(ChannelModeBan)
-	if val == nil {
-		return make(map[string]interface{}, 0)
-	}
-	return val.(map[string]interface{})
-
-}
-
-// AddExceptionMask sets the channel exception mask
-func (c *Channel) AddExceptionMask(mask string) {
-	masks := c.GetExceptionMasks()
-	masks[mask] = nil
-	c.AddModeWithValue(ChannelModeExceptionMask, masks)
-}
-
-// GetExceptionMasks gets the exception masks for the channel
-func (c *Channel) GetExceptionMasks() map[string]interface{} {
-	val := c.GetMode(ChannelModeExceptionMask)
-	if val == nil {
-		return make(map[string]interface{}, 0)
-	}
-	return val.(map[string]interface{})
-
-}
-
-// AddInvitationMask sets the channel invitation mask
-func (c *Channel) AddInvitationMask(mask string) {
-	masks := c.GetInvitationMasks()
-	masks[mask] = nil
-	c.AddModeWithValue(ChannelModeInvitationMask, masks)
-}
-
-// GetInvitationMasks gets the invitation masks for the channel
-func (c *Channel) GetInvitationMasks() map[string]interface{} {
-	val := c.GetMode(ChannelModeInvitationMask)
-	if val == nil {
-		return make(map[string]interface{}, 0)
-	}
-	return val.(map[string]interface{})
-
-}
-
-// SetLimit sets the channel member limit
-func (c *Channel) SetLimit(limit int) {
-	c.AddModeWithValue(ChannelModeLimit, limit)
-}
-
-// GetLimit gets the member limit for the channel
-func (c *Channel) GetLimit() int {
-	val := c.GetMode(ChannelModeLimit)
-	if val == nil {
-		return 0
-	}
-	return val.(int)
 
 }
 
