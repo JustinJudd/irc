@@ -57,16 +57,34 @@ func QuitHandler(message *irc.Message, client *Client) {
 	client.Close()
 }
 
+// PassHandler is a CommandHandler to respond to IRC PASS commands from a client
+// Implemented according to RFC 1459 Section 4.1.1 and RFC 2812 Section 3.1.1
+func PassHandler(message *irc.Message, client *Client) {
+	if len(message.Params) == 0 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Trailing: "No nickname given"}
+		client.Encode(&m)
+		return
+	}
+
+	if len(client.Nickname) != 0 || len(client.Username) != 0 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_ALREADYREGISTRED, Trailing: "Unauthorized command (already registered)"}
+		client.Encode(&m)
+		return
+	}
+
+	client.authorized = message.Params[0] == client.Server.Config.Password
+
+}
+
 // NickHandler is a CommandHandler to respond to IRC NICK commands from a client
 // Implemented according to RFC 1459 Section 4.1.2 and RFC 2812 Section 3.1.2
 func NickHandler(message *irc.Message, client *Client) {
 
 	var m irc.Message
-	name := client.Server.Config.Name
 	//nickname := client.Nickname
 
 	if len(message.Params) == 0 {
-		m = irc.Message{Prefix: &irc.Prefix{Name: name}, Command: irc.ERR_NONICKNAMEGIVEN, Trailing: "No nickname given"}
+		m = irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NONICKNAMEGIVEN, Trailing: "No nickname given"}
 		client.Encode(&m)
 		return
 	}
@@ -77,11 +95,11 @@ func NickHandler(message *irc.Message, client *Client) {
 
 	switch {
 	case !client.authorized:
-		m = irc.Message{Prefix: &irc.Prefix{Name: name}, Command: irc.ERR_PASSWDMISMATCH, Params: []string{newNickname}, Trailing: "Password incorrect"}
+		m = irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_PASSWDMISMATCH, Params: []string{newNickname}, Trailing: "Password incorrect"}
 
 	case found: // nickname already in use
 		fmt.Println("Nickname already used")
-		m = irc.Message{Prefix: &irc.Prefix{Name: name}, Command: irc.ERR_NICKNAMEINUSE, Params: []string{newNickname}, Trailing: "Nickname is already in use"}
+		m = irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NICKNAMEINUSE, Params: []string{newNickname}, Trailing: "Nickname is already in use"}
 
 	default:
 		if len(client.Nickname) == 0 && len(client.Username) != 0 { // Client is connected now, show MOTD ...
@@ -107,17 +125,16 @@ func NickHandler(message *irc.Message, client *Client) {
 // Implemented according to RFC 1459 Section 4.1.3 and RFC 2812 Section 3.1.3
 func UserHandler(message *irc.Message, client *Client) {
 	var m irc.Message
-	serverName := client.Server.Config.Name
 	//nickname := client.Nickname
 
 	if len(client.Username) != 0 { // Already registered
-		m = irc.Message{Prefix: &irc.Prefix{Name: serverName}, Command: irc.ERR_ALREADYREGISTRED, Trailing: "You may not reregister"}
+		m = irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_ALREADYREGISTRED, Trailing: "You may not reregister"}
 		client.Encode(&m)
 		return
 	}
 
 	if len(message.Params) != 3 {
-		m = irc.Message{Prefix: &irc.Prefix{Name: serverName}, Command: irc.ERR_NEEDMOREPARAMS, Trailing: "Not enough parameters"}
+		m = irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Trailing: "Not enough parameters"}
 		client.Encode(&m)
 		return
 	}
