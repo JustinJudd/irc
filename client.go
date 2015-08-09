@@ -40,7 +40,7 @@ type Client struct {
 func (s *Server) newClient(ircConn *irc.Conn, conn net.Conn) *Client {
 	client := &Client{Conn: ircConn, conn: conn, Server: s}
 	client.authorized = len(s.Config.Password) == 0
-	client.idleTimer = time.AfterFunc(time.Minute*3, client.idle)
+	client.idleTimer = time.AfterFunc(time.Minute*1, client.quit)
 	client.channels = map[string]*Channel{}
 	client.UserModeSet = NewUserModeSet()
 	return client
