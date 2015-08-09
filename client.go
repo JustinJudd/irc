@@ -222,11 +222,26 @@ func (c *Client) UpdateNick(newNick string) {
 	c.Server.UpdateClientNick(c, oldNick)
 	c.channelMutex.RLock()
 	defer c.channelMutex.RUnlock()
-	for _, channel := range c.channels {
-		channel.UpdateMemberNick(c, oldNick)
-	}
-	m := irc.Message{Prefix: c.Prefix, Command: irc.NICK, Trailing: newNick}
 
+	// Notify all people that should know (people on channels with this client)
+	m := irc.Message{Prefix: c.Prefix, Command: irc.NICK, Trailing: c.Nickname}
+	notified := map[string]interface{}{} // Just notify people once
 	c.Encode(&m)
+	notified[c.Nickname] = nil
+
+	for _, channel := range c.channels {
+
+		channel.UpdateMemberNick(c, oldNick)
+
+		for client := range channel.members {
+			cl, ok := c.Server.GetClientByNick(client)
+			_, alreadyNotified := notified[client]
+			if ok && !alreadyNotified {
+				cl.Encode(&m)
+				notified[client] = nil
+			}
+		}
+	}
+
 	c.Prefix.Name = newNick
 }

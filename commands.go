@@ -107,7 +107,6 @@ func NickHandler(message *irc.Message, client *Client) {
 			client.Server.AddClientNick(client)
 			client.Welcome()
 		} else if len(client.Username) != 0 { //change client name
-			fmt.Println("Changing nick from", client.Nickname, "to", newNickname)
 			client.UpdateNick(newNickname)
 			//fmt.Println("Updating client name")
 		} else {

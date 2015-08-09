@@ -99,6 +99,7 @@ func (s *Server) UpdateClientNick(client *Client, oldNick string) {
 	defer s.clientByNickMutex.Unlock()
 	delete(s.clientsByNick, oldNick)
 	s.clientsByNick[client.Nickname] = client
+
 }
 
 // GetClientByNick returns a client with the corresponding nickname

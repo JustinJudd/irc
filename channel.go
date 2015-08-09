@@ -254,6 +254,7 @@ func (c *Channel) RemoveMember(client *Client) {
 	}
 }
 
+// UpdateMemberNick updates the listing of the client from the old nickname to what the client actually has
 func (c *Channel) UpdateMemberNick(client *Client, oldNick string) {
 	c.membersMutex.Lock()
 	defer c.membersMutex.Unlock()
