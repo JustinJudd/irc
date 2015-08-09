@@ -890,3 +890,17 @@ func TimeHandler(message *irc.Message, client *Client) {
 	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_TIME, Params: []string{client.Nickname, client.Server.Config.Name}, Trailing: time.Now().Format(time.UnixDate)}
 	client.Encode(&m)
 }
+
+// VersionHandler is a specialized CommandHandler to respond to channel IRC VERSION commands from a client
+// Implemented according to RFC 1459 Section 4.3.1 and RFC 2812 Section 3.4.3
+func VersionHandler(message *irc.Message, client *Client) {
+	if len(message.Params) != 0 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOSUCHSERVER, Params: []string{client.Nickname, message.Params[0]}, Trailing: "No such server"}
+		client.Encode(&m)
+		return
+	}
+
+	p := fmt.Sprintf("%s.%s %s", client.Server.Config.Version, "", client.Server.Config.Name)
+	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_VERSION, Params: []string{client.Nickname, p}}
+	client.Encode(&m)
+}
