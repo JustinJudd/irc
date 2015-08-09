@@ -2,6 +2,7 @@ package irc
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -946,5 +947,28 @@ func VersionHandler(message *irc.Message, client *Client) {
 
 	p := fmt.Sprintf("%s.%s %s", client.Server.Config.Version, "", client.Server.Config.Name)
 	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_VERSION, Params: []string{client.Nickname, p}}
+	client.Encode(&m)
+}
+
+// LinksHandler is a specialized CommandHandler to respond to channel IRC LINKS commands from a client
+// Implemented according to RFC 1459 Section 4.3.3 and RFC 2812 Section 3.4.5
+func LinksHandler(message *irc.Message, client *Client) {
+	if len(message.Params) == 2 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOSUCHSERVER, Params: []string{client.Nickname, message.Params[0]}, Trailing: "No such server"}
+		client.Encode(&m)
+		return
+	}
+
+	mask := "*"
+	if len(message.Params) != 0 {
+		mask = message.Params[0]
+	}
+	regMask := strings.Replace(mask, "*", ".*", -1)
+	ok, err := regexp.MatchString(regMask, client.Server.Config.Name)
+	if ok && err == nil {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_LINKS, Params: []string{client.Nickname, mask, client.Server.Config.Name}, Trailing: "0"}
+		client.Encode(&m)
+	}
+	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_ENDOFLINKS, Params: []string{client.Nickname, mask}, Trailing: "End of LINKS list"}
 	client.Encode(&m)
 }
