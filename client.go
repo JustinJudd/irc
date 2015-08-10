@@ -24,7 +24,8 @@ type Client struct {
 	Prefix *irc.Prefix
 
 	Server     *Server
-	authorized bool
+	Authorized bool
+	Registered bool
 
 	idleTimer *time.Timer
 	quitTimer *time.Timer
@@ -39,7 +40,7 @@ type Client struct {
 
 func (s *Server) newClient(ircConn *irc.Conn, conn net.Conn) *Client {
 	client := &Client{Conn: ircConn, conn: conn, Server: s}
-	client.authorized = len(s.Config.Password) == 0
+	client.Authorized = len(s.Config.Password) == 0
 	client.idleTimer = time.AfterFunc(time.Minute*1, client.quit)
 	client.channels = map[string]*Channel{}
 	client.UserModeSet = NewUserModeSet()
@@ -84,7 +85,13 @@ func (c *Client) handleIncoming() {
 		}
 
 		c.idleTimer.Stop()
-		c.idleTimer = time.AfterFunc(time.Minute*3, c.idle)
+
+		if !c.Registered { // if client isn't registered don't bother with PINGs
+			c.idleTimer = time.AfterFunc(time.Minute*1, c.quit)
+		} else {
+			c.idleTimer = time.AfterFunc(time.Minute*3, c.idle)
+		}
+
 		if c.quitTimer != nil {
 			c.quitTimer.Stop()
 			c.quitTimer = nil
@@ -124,6 +131,7 @@ func (c *Client) Welcome() {
 
 	// Have all client info now
 	c.Prefix = &irc.Prefix{Name: c.Nickname, User: c.Name, Host: c.Host}
+	c.Registered = true
 
 	m := irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_WELCOME,
 		Params: []string{c.Nickname, "Welcome to the Internet Relay Network", c.Prefix.String()}}
