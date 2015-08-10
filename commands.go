@@ -59,6 +59,19 @@ func QuitHandler(message *irc.Message, client *Client) {
 	client.Close()
 }
 
+// RegisteredHandler is a CommandHandler middleware to check that a user/client is properly registered
+func RegisteredHandler(h CommandHandler) CommandHandler {
+	return CommandHandlerFunc(func(message *irc.Message, client *Client) {
+		if client.Registered {
+			h.ServeIRC(message, client)
+		} else {
+			m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOTREGISTERED, Trailing: "You have not registered"}
+
+			client.Encode(&m)
+		}
+	})
+}
+
 // PassHandler is a CommandHandler to respond to IRC PASS commands from a client
 // Implemented according to RFC 1459 Section 4.1.1 and RFC 2812 Section 3.1.1
 func PassHandler(message *irc.Message, client *Client) {
@@ -74,7 +87,7 @@ func PassHandler(message *irc.Message, client *Client) {
 		return
 	}
 
-	client.authorized = message.Params[0] == client.Server.Config.Password
+	client.Authorized = message.Params[0] == client.Server.Config.Password
 
 }
 
@@ -96,7 +109,7 @@ func NickHandler(message *irc.Message, client *Client) {
 	_, found := client.Server.GetClientByNick(newNickname)
 
 	switch {
-	case !client.authorized:
+	case !client.Authorized:
 		m = irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_PASSWDMISMATCH, Params: []string{newNickname}, Trailing: "Password incorrect"}
 
 	case found: // nickname already in use
