@@ -1047,3 +1047,27 @@ func SendInvite(inviter *Client, invitee *Client, channel *Channel) {
 	}
 	return
 }
+
+// IsonHandler is a specialized CommandHandler to respond to channel IRC ISON commands from a client
+// Implemented according to RFC 1459 Section 5.8 and RFC 2812 Section 4.9
+func IsonHandler(message *irc.Message, client *Client) {
+	if len(message.Params) == 0 && len(message.Trailing) == 0 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Params: []string{client.Nickname}, Trailing: "Not enough parameters"}
+		client.Encode(&m)
+		return
+	}
+	nicks := message.Params
+	if len(nicks) == 0 {
+		nicks = strings.Split(message.Trailing, " ")
+	}
+	found := []string{}
+	for _, nick := range nicks {
+		_, ok := client.Server.GetClientByNick(nick)
+		if ok {
+			found = append(found, nick)
+		}
+	}
+	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_ISON, Params: []string{client.Nickname}, Trailing: strings.Join(found, " ")}
+	client.Encode(&m)
+
+}
