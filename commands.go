@@ -985,3 +985,65 @@ func LinksHandler(message *irc.Message, client *Client) {
 	m := irc.Message{Prefix: client.Server.Prefix, Command: irc.RPL_ENDOFLINKS, Params: []string{client.Nickname, mask}, Trailing: "End of LINKS list"}
 	client.Encode(&m)
 }
+
+// InviteHandler is a specialized CommandHandler to respond to channel IRC INVITE commands from a client
+// Implemented according to RFC 1459 Section 4.2.7 and RFC 2812 Section 3.2.7
+func InviteHandler(message *irc.Message, client *Client) {
+	if len(message.Params) != 2 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Params: []string{client.Nickname}, Trailing: "Not enough parameters"}
+		client.Encode(&m)
+		return
+	}
+	nick := message.Params[0]
+	channelName := message.Params[1]
+	cl, ok := client.Server.GetClientByNick(nick)
+	if !ok {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOSUCHNICK, Params: []string{client.Nickname, nick}, Trailing: "No such nick/channel"}
+		client.Encode(&m)
+		return
+	}
+
+	channel, ok := client.Server.GetChannel(channelName)
+	if !ok { //channel doesn't exist, send invite
+		SendInvite(client, cl, channel)
+		return
+	}
+
+	if !channel.HasMember(client) {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NOTONCHANNEL, Params: []string{client.Nickname, channelName}, Trailing: "You're not on that channel"}
+		client.Encode(&m)
+		return
+	}
+
+	if channel.HasMember(cl) {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_USERONCHANNEL, Params: []string{client.Nickname, nick, channelName}, Trailing: "is already on channel"}
+		client.Encode(&m)
+		return
+	}
+
+	if channel.HasMode(ChannelModeInviteOnly) {
+		if !channel.MemberHasMode(client, ChannelModeOperator) { // if invite-only, only ops can send invites
+			m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_CHANOPRIVSNEEDED, Params: []string{client.Nickname, channelName}, Trailing: "You're not channel operator"}
+			client.Encode(&m)
+			return
+		}
+		channel.AddInvitationMask(cl.Prefix.String())
+	}
+
+	SendInvite(client, cl, channel)
+
+}
+
+// SendInvite handles sending the invite messages to both parties
+func SendInvite(inviter *Client, invitee *Client, channel *Channel) {
+	m := irc.Message{Prefix: inviter.Server.Prefix, Command: irc.RPL_INVITING, Params: []string{inviter.Nickname, channel.Name, invitee.Nickname}}
+	inviter.Encode(&m)
+	m.Params[0] = invitee.Nickname
+	invitee.Encode(&m)
+
+	if invitee.HasMode(UserModeAway) {
+		m := irc.Message{Prefix: inviter.Server.Prefix, Command: irc.RPL_AWAY, Params: []string{inviter.Nickname, invitee.Nickname}, Trailing: invitee.AwayMessage}
+		inviter.Encode(&m)
+	}
+	return
+}
