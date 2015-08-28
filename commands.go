@@ -1071,3 +1071,15 @@ func IsonHandler(message *irc.Message, client *Client) {
 	client.Encode(&m)
 
 }
+
+// OperHandler is a specialized CommandHandler to respond to channel IRC OPER commands from a client
+// Implemented according to RFC 1459 Section 4.1.5 and RFC 2812 Section 3.1.4
+func OperHandler(message *irc.Message, client *Client) {
+	if len(message.Params) < 2 {
+		m := irc.Message{Prefix: client.Server.Prefix, Command: irc.ERR_NEEDMOREPARAMS, Params: []string{client.Nickname}, Trailing: "Not enough parameters"}
+		client.Encode(&m)
+		return
+	}
+
+	client.Server.Authenticate(message.Params[0], message.Params[1], client)
+}

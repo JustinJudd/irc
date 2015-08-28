@@ -309,3 +309,18 @@ func (c *Client) Who() {
 	m := irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_ENDOFWHO, Params: []string{c.Nickname, "*"}, Trailing: "End of WHO list"}
 	c.Encode(&m)
 }
+
+// MakeOper makes this client a server operator
+func (c *Client) MakeOper() {
+	c.AddMode(UserModeOperator)
+	m := irc.Message{Prefix: c.Server.Prefix, Command: irc.MODE, Params: []string{c.Nickname, "+o"}}
+	for name, client := range c.Server.clientsByNick {
+		if name == c.Nickname {
+			continue
+		}
+		client.Encode(&m)
+
+	}
+	m = irc.Message{Prefix: c.Server.Prefix, Command: irc.RPL_YOUREOPER, Params: []string{c.Nickname}, Trailing: "You are now an IRC operator"}
+	c.Encode(&m)
+}
