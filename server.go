@@ -26,6 +26,8 @@ type Server struct {
 
 	channels     map[string]*Channel
 	channelMutex sync.RWMutex
+
+	OperAuthMethod
 }
 
 // ServerConfig contains configuration data for seeding a server
